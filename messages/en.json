@@ -118,6 +118,31 @@
       "gearLink": "Gear-set link"
     }
   },
+  "stats": {
+    "pages": {
+      "title": "Pages by floor",
+      "description": "1 page per boss kill. Adjust covers pre-tier carry-over, missed weeks, alliance pages, etc.",
+      "floor": "Floor {number}",
+      "kills": "Kills",
+      "adjust": "Adjust",
+      "spent": "Spent",
+      "current": "Current",
+      "saveAdjust": "Save",
+      "saveAdjustToast": "Adjust saved.",
+      "saveErrorToast": "Save failed."
+    },
+    "materials": {
+      "title": "Materials",
+      "description": "Upgrade tokens received as drops or token purchases.",
+      "received": "Received"
+    },
+    "savage": {
+      "title": "Savage drops",
+      "description": "Gear drops awarded this tier (excludes materials and token purchases).",
+      "totalLabel": "This tier",
+      "perFloor": "Per floor"
+    }
+  },
   "bis": {
     "title": "Best in Slot",
     "description": "Per-slot plan. Changes save automatically.",

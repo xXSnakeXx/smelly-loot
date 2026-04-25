@@ -118,6 +118,31 @@
       "gearLink": "Gear-Set-Link"
     }
   },
+  "stats": {
+    "pages": {
+      "title": "Pages pro Floor",
+      "description": "1 Page pro Boss-Kill. Adjust deckt Pre-Tier-Carry-Over, verpasste Wochen, Alliance-Pages, usw. ab.",
+      "floor": "Floor {number}",
+      "kills": "Kills",
+      "adjust": "Adjust",
+      "spent": "Ausgegeben",
+      "current": "Aktuell",
+      "saveAdjust": "Speichern",
+      "saveAdjustToast": "Adjust gespeichert.",
+      "saveErrorToast": "Speichern fehlgeschlagen."
+    },
+    "materials": {
+      "title": "Materialien",
+      "description": "Upgrade-Tokens — als Drop erhalten oder per Pages gekauft.",
+      "received": "Erhalten"
+    },
+    "savage": {
+      "title": "Savage-Drops",
+      "description": "Gear-Drops dieser Tier (ohne Materialien und Token-Käufe).",
+      "totalLabel": "Diese Tier",
+      "perFloor": "Pro Floor"
+    }
+  },
   "bis": {
     "title": "Best in Slot",
     "description": "Pro Slot. Änderungen werden automatisch gespeichert.",
