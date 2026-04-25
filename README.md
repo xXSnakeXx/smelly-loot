@@ -83,6 +83,7 @@ remote libSQL/Turso instance.
 smelly-loot/
 ├── messages/                 # next-intl JSON message bundles (en, de)
 ├── drizzle/                  # generated SQL migrations (committed)
+├── scripts/                  # one-shot maintenance scripts (tier import, ...)
 ├── public/                   # static assets served at /
 ├── src/
 │   ├── app/[locale]/         # locale-scoped App Router routes
