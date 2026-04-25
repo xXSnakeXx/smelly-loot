@@ -143,6 +143,35 @@
       "perFloor": "Per floor"
     }
   },
+  "history": {
+    "title": "Loot history",
+    "description": "Every recorded drop, grouped by week.",
+    "empty": "No drops recorded yet.",
+    "weekLabel": "Week {number}",
+    "weekStarted": "Started {date}",
+    "floorLabel": "Floor {number}",
+    "noDrops": "No drops recorded for this week.",
+    "viaPages": "via pages",
+    "manualOverride": "manual override",
+    "unassigned": "—"
+  },
+  "tierEdit": {
+    "title": "Tier configuration",
+    "description": "Set the tier name and max iLv. The nine per-source iLvs are derived from the max via the standard FFXIV deltas (Savage = max, JustNo = max − 40).",
+    "name": {
+      "label": "Tier name",
+      "placeholder": "e.g. Arcadion Heavyweight Savage"
+    },
+    "maxIlv": {
+      "label": "Max iLv",
+      "help": "Highest item level the tier can produce — typically the upgraded Savage piece."
+    },
+    "preview": "Preview",
+    "ilvLabel": "{source}",
+    "save": "Save",
+    "savedToast": "Tier configuration saved.",
+    "saveErrorToast": "Save failed."
+  },
   "bis": {
     "title": "Best in Slot",
     "description": "Per-slot plan. Changes save automatically.",
