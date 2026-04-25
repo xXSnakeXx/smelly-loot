@@ -6,15 +6,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "@/i18n/navigation";
 import { getCurrentContext } from "@/lib/db/queries";
 import { findPlayer, listBisChoicesForPlayer } from "@/lib/db/queries-bis";
+import { loadPlayerStats } from "@/lib/db/queries-stats";
 import { jobToGearRole } from "@/lib/ffxiv/jobs";
 
 import { BisTable } from "./_components/bis-table";
+import { PageStatsTable } from "./_components/page-stats-table";
 
 // Live data per request — see the dashboard page for the full rationale.
 export const dynamic = "force-dynamic";
 
 /**
- * Player detail page with the BiS tracker.
+ * Player detail page.
+ *
+ * Three stacked sections:
+ *
+ * 1. Pages & Materials — auto-derived per-floor balance, plus the
+ *    Glaze / Twine / Ester tally and the Savage-drop count for the
+ *    fairness factor. The Adjust column is the one editable seam in
+ *    the entire page-accounting layer (Topic 2).
+ * 2. BiS tracker — the twelve-slot gear table.
  *
  * The route segment uses a numeric id (the `player.id` primary key);
  * an explicit Promise type is used here instead of Next.js 16's
@@ -37,6 +47,7 @@ export default async function PlayerDetailPage({
   const tBis = await getTranslations("bis");
   const tPlayers = await getTranslations("players");
   const tRoles = await getTranslations("players.roles");
+  const tStats = await getTranslations("stats");
 
   const player = await findPlayer(playerId);
   if (!player) {
@@ -44,7 +55,10 @@ export default async function PlayerDetailPage({
   }
 
   const { tier } = await getCurrentContext();
-  const choices = await listBisChoicesForPlayer(playerId);
+  const [choices, stats] = await Promise.all([
+    listBisChoicesForPlayer(playerId),
+    loadPlayerStats(playerId, tier.id),
+  ]);
   const role = jobToGearRole(player.mainJob);
 
   return (
@@ -91,6 +105,51 @@ export default async function PlayerDetailPage({
         </div>
       </header>
 
+      <section className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base font-medium">
+              {tStats("pages.title")}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {tStats("pages.description")}
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <PageStatsTable
+              playerId={player.id}
+              tierId={tier.id}
+              rows={stats.pagesByFloor}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-medium">
+              {tStats("materials.title")}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {tStats("materials.description")}
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 text-sm">
+            <MaterialRow label="Glaze" count={stats.materialsReceived.Glaze} />
+            <MaterialRow label="Twine" count={stats.materialsReceived.Twine} />
+            <MaterialRow label="Ester" count={stats.materialsReceived.Ester} />
+            <hr className="my-2 border-border" />
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs text-muted-foreground">
+                {tStats("savage.totalLabel")}
+              </span>
+              <span className="font-mono text-base">
+                {stats.savageDropsThisTier}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-medium">
@@ -103,5 +162,14 @@ export default async function PlayerDetailPage({
         </CardContent>
       </Card>
     </main>
+  );
+}
+
+function MaterialRow({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-mono">{count}</span>
+    </div>
   );
 }

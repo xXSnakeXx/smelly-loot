@@ -118,6 +118,31 @@
       "gearLink": "Gear-Set-Link"
     }
   },
+  "stats": {
+    "pages": {
+      "title": "Pages pro Floor",
+      "description": "1 Page pro Boss-Kill. Adjust deckt Pre-Tier-Carry-Over, verpasste Wochen, Alliance-Pages, usw. ab.",
+      "floor": "Floor {number}",
+      "kills": "Kills",
+      "adjust": "Adjust",
+      "spent": "Ausgegeben",
+      "current": "Aktuell",
+      "saveAdjust": "Speichern",
+      "saveAdjustToast": "Adjust gespeichert.",
+      "saveErrorToast": "Speichern fehlgeschlagen."
+    },
+    "materials": {
+      "title": "Materialien",
+      "description": "Upgrade-Tokens — als Drop erhalten oder per Pages gekauft.",
+      "received": "Erhalten"
+    },
+    "savage": {
+      "title": "Savage-Drops",
+      "description": "Gear-Drops dieser Tier (ohne Materialien und Token-Käufe).",
+      "totalLabel": "Diese Tier",
+      "perFloor": "Pro Floor"
+    }
+  },
   "bis": {
     "title": "Best in Slot",
     "description": "Pro Slot. Änderungen werden automatisch gespeichert.",
@@ -164,5 +189,51 @@
     },
     "savedToast": "BiS-Eintrag gespeichert.",
     "saveErrorToast": "Speichern fehlgeschlagen — bitte erneut versuchen."
+  },
+  "loot": {
+    "title": "Loot-Verteilung",
+    "description": "Boss-Kills erfassen und Drops zuweisen; die Engine empfiehlt pro Item einen Empfänger.",
+    "noWeeks": {
+      "title": "Noch keine Raid-Woche erfasst.",
+      "description": "Starte die erste Raid-Woche, um Kills und Loot zu tracken.",
+      "cta": "Erste Raid-Woche starten"
+    },
+    "header": {
+      "weekLabel": "Woche {number}",
+      "started": "Gestartet {date}",
+      "newWeek": "Neue Woche starten"
+    },
+    "floor": {
+      "label": "Floor {number}",
+      "notKilled": "Noch nicht gekillt",
+      "killed": "Gekillt am {date}",
+      "killCta": "Als gekillt markieren",
+      "undoKill": "Kill zurücknehmen",
+      "tracked": "Mit Empfehlungs-Engine",
+      "untracked": "Manuell"
+    },
+    "drop": {
+      "recommended": "Empfehlung:",
+      "noEligible": "Kein berechtigter Empfänger — entweder hat jeder Spieler genug Pages oder will den Drop nicht.",
+      "awarded": "An {name} vergeben",
+      "accept": "An {name} vergeben",
+      "manual": "Anderen Spieler wählen…",
+      "undo": "Rückgängig",
+      "paidWithPages": "Mit Pages bezahlt",
+      "scoreLabel": "Score",
+      "needLabel": "Bedarf",
+      "pagesLabel": "Pages",
+      "manualPickerTitle": "Anderen Empfänger wählen",
+      "manualPickerDescription": "Alle Spieler sortiert nach Algorithmus-Score. Wähle irgendwen — wird als manueller Override erfasst.",
+      "scoreBreakdown": "{need} Bedarf × {role} × {ilv} × {fairness} − {recency}"
+    },
+    "toasts": {
+      "weekStarted": "Neue Raid-Woche gestartet.",
+      "killRecorded": "Boss-Kill erfasst.",
+      "killUndone": "Boss-Kill zurückgenommen.",
+      "dropAwarded": "Drop an {name} vergeben.",
+      "dropUndone": "Drop-Zuweisung zurückgenommen.",
+      "error": "Etwas ist schiefgelaufen — bitte erneut versuchen."
+    }
   }
 }

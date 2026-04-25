@@ -1,17 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { type GearRole } from "@/lib/ffxiv/jobs";
-import {
-  type BisSource,
-  deriveSourceIlvs,
-  type Slot,
-} from "@/lib/ffxiv/slots";
+import type { GearRole } from "@/lib/ffxiv/jobs";
+import { type BisSource, deriveSourceIlvs, type Slot } from "@/lib/ffxiv/slots";
 
 import {
   type DropContext,
   type PlayerSnapshot,
-  type TierSnapshot,
   scoreDrop,
+  type TierSnapshot,
 } from "./algorithm";
 
 /**
@@ -82,7 +78,10 @@ function makePlayer(opts: PlayerOptions): PlayerSnapshot {
       ]),
     ),
     pages: new Map(
-      Object.entries(opts.pages ?? {}).map(([k, v]) => [Number(k), v as number]),
+      Object.entries(opts.pages ?? {}).map(([k, v]) => [
+        Number(k),
+        v as number,
+      ]),
     ),
     materialsReceived: new Map(
       Object.entries(opts.materialsReceived ?? {}).map(([k, v]) => [
@@ -321,7 +320,10 @@ describe("scoreDrop — materials", () => {
         materialsReceived: { Glaze: 0 },
       }),
     ];
-    const ranked = scoreDrop(players, context({ itemKey: "Glaze", floorNumber: 2 }));
+    const ranked = scoreDrop(
+      players,
+      context({ itemKey: "Glaze", floorNumber: 2 }),
+    );
     expect(ranked[0]?.player.name).toBe("FourSlots");
     expect(ranked[0]?.breakdown.effectiveNeed).toBe(4);
     expect(ranked[1]?.breakdown.effectiveNeed).toBe(1);
@@ -337,7 +339,10 @@ describe("scoreDrop — materials", () => {
         materialsReceived: { Glaze: 2 },
       }),
     ];
-    const [only] = scoreDrop(players, context({ itemKey: "Glaze", floorNumber: 2 }));
+    const [only] = scoreDrop(
+      players,
+      context({ itemKey: "Glaze", floorNumber: 2 }),
+    );
     expect(only?.score).toBe(0);
     expect(only?.breakdown.effectiveNeed).toBe(0);
   });
@@ -353,7 +358,10 @@ describe("scoreDrop — materials", () => {
         pages: { 2: 6 }, // 6 / 3 = 2 — can buy two Glazes already
       }),
     ];
-    const [only] = scoreDrop(players, context({ itemKey: "Glaze", floorNumber: 2 }));
+    const [only] = scoreDrop(
+      players,
+      context({ itemKey: "Glaze", floorNumber: 2 }),
+    );
     expect(only?.breakdown.buyPower).toBe(2);
     expect(only?.score).toBe(0);
   });
