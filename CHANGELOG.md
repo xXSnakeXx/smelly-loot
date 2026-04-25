@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-04-25
+
+### Changed
+
+- **Cascade deltas corrected** for `TomeUp` (-5 → 0) and `Tome`
+  (-15 → -10). Per the spreadsheet legend the upgraded tome piece
+  reaches the same iLv as the raw Savage drop, and the
+  non-upgraded weekly tome cap shares its iLv with the Catchup
+  pool. The active Heavyweight tier now reads:
+  - Savage  790
+  - TomeUp  790
+  - Catchup 780
+  - Tome    780
+  - Extreme 770, Relic 770, Crafted 765, WHYYYY 760, JustNo 750
+
+  The `bis_status` colour legend keeps working unchanged — the
+  "near-max / intermediate / behind / significant-gap" thresholds
+  are gap-driven (≤5 / ≤10 / ≤20 / >20) so the slimmer cascade
+  spread reads the same.
+
 ## [1.2.1] - 2026-04-25
 
 A small data-correctness pass.
