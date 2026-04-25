@@ -25,9 +25,12 @@
  *     counts `loot_drop` rows with `paid_with_pages = true`. The
  *     spreadsheet doesn't distinguish between natural drops and
  *     token purchases, so every imported drop lands as
- *     `paid_with_pages = false`; if a downstream user wants the
- *     "Spent" column to reflect actual page-buys, they can flip
- *     individual drops in the UI.
+ *     `paid_with_pages = false` and `picked_by_algorithm = true`
+ *     (the historical distribution is by definition the agreed-upon
+ *     outcome, so the History tab shouldn't tag every row as a
+ *     manual override). If a downstream user wants the "Spent"
+ *     column to reflect actual page-buys, they can flip individual
+ *     drops in the UI.
  *
  * The script is **destructive for raid_week / boss_kill / loot_drop**
  * (every row scoped to the active tier is deleted before re-import)
@@ -860,7 +863,7 @@ async function main(): Promise<void> {
                 (raid_week_id, floor_id, item_key, recipient_id,
                  paid_with_pages, picked_by_algorithm, score_snapshot,
                  notes, awarded_at)
-              VALUES (?, ?, ?, ?, 0, 0, NULL, NULL, unixepoch())`,
+              VALUES (?, ?, ?, ?, 0, 1, NULL, NULL, unixepoch())`,
         args: [weekId, floorId, map.itemKey, recipientId],
       });
       totalDrops += 1;
