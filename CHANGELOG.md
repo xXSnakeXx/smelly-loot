@@ -7,6 +7,55 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-04-25
+
+A UI/UX pass to centralise the app around the dashboard. Inspired by
+the FFLogs-Analyzer pattern the team is already used to:
+
+### Changed
+
+- **Dashboard is now a tier-grid.** The previous hero card +
+  quick-actions row is replaced by one clickable card per tier
+  (active first, archived after). Each card surfaces a drops
+  counter on the right and weeks / kills in the footer; hover
+  lifts the border to indigo so the cards feel actionable.
+- **Top nav slimmed to brand + Players + Settings cog.** Tier,
+  Loot, and History no longer live up there — they're tabs inside
+  the per-tier detail page now. The Settings cog targets the
+  team-settings page.
+- **Indigo primary accent** replaces the neutral primary on
+  buttons, rings, and the dashboard's drop counter. The slate-blue
+  background tint stays as calibrated.
+
+### Added
+
+- **NewTierDialog**: dashed-border "plus card" rendered as the last
+  cell in the dashboard grid. Opens a dialog with name + max iLv;
+  on submit the new `createTierAction` Server Action archives the
+  previously-active tier, inserts the new tier with the cascaded
+  per-source iLvs, and provisions the canonical Heavyweight floor
+  + buy-cost layout. The dialog closes itself and routes the user
+  to `/tiers/<newTierId>`.
+- **`/tiers/[id]` tier-detail page** with four tabs:
+  - **Plan**: forward-looking simulator
+  - **Track**: per-floor kill toggle + drop cards (shared with
+    the legacy `/loot` route)
+  - **History**: per-week loot history scoped to this tier
+  - **Settings**: tier-name + max-iLv form
+- **`src/lib/db/queries-tiers.ts`**: `listTiersForTeam` (with
+  weeks / kills / drops rollup per tier) + `findTierById`
+  (team-scoped lookup).
+- **`src/lib/ffxiv/tier-defaults.ts`**: shared Heavyweight floor
+  layout + buy-cost defaults so the boot-time seed and the in-app
+  tier-creation flow stay in lock-step.
+
+### Routing
+
+- `/loot`, `/tier`, `/history` redirect to the active tier's
+  `/tiers/<id>` page (preserving locale prefix). Direct links and
+  bookmarks keep working — they just land inside the new tabbed
+  view.
+
 ## [1.1.0] - 2026-04-25
 
 A presentation pass. Phase 1's algorithm and data model don't change —
