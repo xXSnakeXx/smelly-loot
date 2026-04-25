@@ -1,33 +1,50 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 /**
  * Application-wide schema definitions.
  *
- * Phase 0 only defines the `team` table; the rest of the loot domain
- * (player, bis_choice, tier, floor, raid_week, loot_drop, …) is
- * introduced as Phase 1 features land, one migration per logical unit.
+ * The schema is split into logical clusters by comment banner — Team /
+ * Player → Tier / Floor / Costs → Loot tracking. Drizzle's API works
+ * just as well in a single file as it does split across multiple, and
+ * keeping everything here makes the foreign-key surface easy to audit
+ * during reviews. Once the file passes ~600 LOC we'll consider
+ * splitting (per the convention in fflogs-analyzer).
+ *
+ * Conventions used throughout:
+ * - All timestamps live in `INTEGER` columns with Drizzle's
+ *   `mode: "timestamp"` so the JS layer sees `Date` values.
+ *   `default(sql\`(unixepoch())\`)` lets SQLite stamp them at insert time.
+ * - Foreign keys cascade on delete by default; orphaned rows would be
+ *   confusing to reason about and SQLite enforces them when
+ *   `PRAGMA foreign_keys = ON` is set (libSQL does this by default).
+ * - Composite primary keys use Drizzle's `primaryKey` helper.
+ * - `text` columns store enum-like values; the application layer
+ *   validates membership via Zod schemas before write. Adding a
+ *   `CHECK` constraint is overkill for a v1 with a single trusted
+ *   writer.
  */
+
+// ─── Team / Player ─────────────────────────────────────────────────────
 
 /**
  * A single static (raid team).
  *
- * The Phase 1 data model assumes one team per deployment, but the schema
- * already supports multiple rows so a future "multi-team" feature
- * (Roadmap Phase 3) won't require a destructive migration.
- *
- * `locale` stores the team's preferred UI language (`de` or `en` for
- * v1.0). Stored as plain text to keep the migration story simple; an
- * enum check constraint can be added later if drift becomes an issue.
+ * Phase 1 assumes one team per deployment, but the schema already
+ * supports multiple rows so the Phase 3 multi-team feature won't
+ * require a destructive migration.
  */
 export const team = sqliteTable("team", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   locale: text("locale").notNull().default("en"),
-  // SQLite has no native timestamp type; Drizzle stores epoch seconds in
-  // an integer column when `mode: "timestamp"` is used. The default is
-  // applied by the database via `CURRENT_TIMESTAMP`, which Drizzle
-  // exposes through the `sql` template tag.
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -35,3 +52,320 @@ export const team = sqliteTable("team", {
 
 export type Team = typeof team.$inferSelect;
 export type NewTeam = typeof team.$inferInsert;
+
+/**
+ * A single raider on a team.
+ *
+ * `mainJob` is the four-character FF XIV job code (PLD, WHM, ...).
+ * The mapping from job → gear role lives in `src/lib/ffxiv/jobs.ts`;
+ * no `gear_role` column is stored because it's a pure derivation and
+ * keeping it out of the schema means changing the role table is
+ * effective immediately, with no migration.
+ *
+ * `altJobs` is a JSON array of job codes the player also raids on, for
+ * the rare "I might main-swap mid-tier" scenarios. It's informational
+ * for the algorithm in v1 but feeds the future per-job BiS view.
+ *
+ * `gearLink` is the raw xivgear.app URL the player pasted. Phase 1
+ * stores it verbatim; Phase 2 adds the parser that turns it into BiS
+ * choices automatically.
+ */
+export const player = sqliteTable(
+  "player",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => team.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    mainJob: text("main_job").notNull(),
+    altJobs: text("alt_jobs", { mode: "json" })
+      .notNull()
+      .$type<string[]>()
+      .default(sql`(json_array())`),
+    gearLink: text("gear_link"),
+    notes: text("notes"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [index("player_team_idx").on(t.teamId, t.sortOrder)],
+);
+
+export type Player = typeof player.$inferSelect;
+export type NewPlayer = typeof player.$inferInsert;
+
+/**
+ * Per-player BiS plan: which source they want for each slot.
+ *
+ * Composite primary key on (player, slot) so a player has at most one
+ * row per slot. The `source` column accepts any value from `BIS_SOURCES`
+ * (see `src/lib/ffxiv/slots.ts`); the application validates with Zod
+ * before write.
+ *
+ * Two source columns are tracked: `desiredSource` is the BiS plan
+ * (where the player wants the slot to land), `currentSource` is what
+ * they're actually wearing right now. The spreadsheet uses both — the
+ * algorithm only cares about `desiredSource`, but the tracker UI
+ * needs `currentSource` for colour-coded progress.
+ */
+export const bisChoice = sqliteTable(
+  "bis_choice",
+  {
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => player.id, { onDelete: "cascade" }),
+    slot: text("slot").notNull(),
+    desiredSource: text("desired_source").notNull().default("NotPlanned"),
+    currentSource: text("current_source").notNull().default("NotPlanned"),
+    receivedAt: integer("received_at", { mode: "timestamp" }),
+    marker: text("marker"),
+  },
+  (t) => [primaryKey({ columns: [t.playerId, t.slot] })],
+);
+
+export type BisChoice = typeof bisChoice.$inferSelect;
+export type NewBisChoice = typeof bisChoice.$inferInsert;
+
+// ─── Tier / Floor / Costs ──────────────────────────────────────────────
+
+/**
+ * A raid tier (e.g. "Arcadion Heavyweight Savage").
+ *
+ * `archived_at` is set when the tier is closed for new loot but kept
+ * read-only for history (Topic 7 decision). `max_ilv` is the only
+ * mandatory user input at creation time; the per-source iLvs default
+ * to `max_ilv + DEFAULT_ILV_DELTAS[source]` (see `src/lib/ffxiv/slots.ts`)
+ * but each value is editable in case a future patch breaks the
+ * pattern.
+ *
+ * The per-source iLv columns are denormalised on the tier row instead
+ * of living in a per-source-iLv junction table. There are exactly nine
+ * sources by design (eight from the spreadsheet + the synthetic
+ * `NotPlanned`); flattening them to columns is dramatically easier to
+ * read in SQL inspectors and avoids a join on every BiS render.
+ */
+export const tier = sqliteTable(
+  "tier",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => team.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    maxIlv: integer("max_ilv").notNull(),
+    ilvSavage: integer("ilv_savage").notNull(),
+    ilvTomeUp: integer("ilv_tome_up").notNull(),
+    ilvCatchup: integer("ilv_catchup").notNull(),
+    ilvTome: integer("ilv_tome").notNull(),
+    ilvExtreme: integer("ilv_extreme").notNull(),
+    ilvRelic: integer("ilv_relic").notNull(),
+    ilvCrafted: integer("ilv_crafted").notNull(),
+    ilvWhyyyy: integer("ilv_whyyyy").notNull(),
+    ilvJustNo: integer("ilv_just_no").notNull(),
+    archivedAt: integer("archived_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [index("tier_team_idx").on(t.teamId, t.archivedAt)],
+);
+
+export type Tier = typeof tier.$inferSelect;
+export type NewTier = typeof tier.$inferInsert;
+
+/**
+ * One floor (boss encounter) within a tier.
+ *
+ * `drops` is a JSON array of item keys (see `ITEM_KEYS` in
+ * `src/lib/ffxiv/slots.ts`) listing every item that can drop or be
+ * tracked from this floor. `tracked_for_algorithm = false` skips the
+ * scoring engine for this floor (Topic 3 decision: floor 4 is logged
+ * but not algorithmically distributed).
+ *
+ * `pageTokenLabel` is the in-game name of the per-floor page token
+ * ("AAC Illustrated: HW Edition I" → "HW Edition I"). It's optional
+ * because future tiers might use a different naming scheme.
+ */
+export const floor = sqliteTable(
+  "floor",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    tierId: integer("tier_id")
+      .notNull()
+      .references(() => tier.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
+    drops: text("drops", { mode: "json" }).notNull().$type<string[]>(),
+    trackedForAlgorithm: integer("tracked_for_algorithm", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    pageTokenLabel: text("page_token_label"),
+  },
+  (t) => [uniqueIndex("floor_tier_number_uidx").on(t.tierId, t.number)],
+);
+
+export type Floor = typeof floor.$inferSelect;
+export type NewFloor = typeof floor.$inferInsert;
+
+/**
+ * Per-tier item buy cost: how many of which floor's tokens it takes
+ * to purchase a given item. Covers gear pieces *and* upgrade
+ * materials — the algorithm's `effective_need` formula uses the same
+ * lookup for both.
+ *
+ * Composite primary key on (tier, item_key); `floor_number` is a
+ * regular column (1-4), not a foreign key to `floor.id`, because a
+ * tier might want to retroactively repoint a buy cost to a different
+ * floor without rewriting `floor.id` references.
+ */
+export const tierBuyCost = sqliteTable(
+  "tier_buy_cost",
+  {
+    tierId: integer("tier_id")
+      .notNull()
+      .references(() => tier.id, { onDelete: "cascade" }),
+    itemKey: text("item_key").notNull(),
+    floorNumber: integer("floor_number").notNull(),
+    cost: integer("cost").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tierId, t.itemKey] })],
+);
+
+export type TierBuyCost = typeof tierBuyCost.$inferSelect;
+export type NewTierBuyCost = typeof tierBuyCost.$inferInsert;
+
+// ─── Loot tracking ─────────────────────────────────────────────────────
+
+/**
+ * One raid week in the context of a tier.
+ *
+ * `weekNumber` is a per-tier counter (1, 2, 3, …) so weekly views
+ * stay readable across tier rollovers. The spreadsheet labels weeks
+ * the same way.
+ */
+export const raidWeek = sqliteTable(
+  "raid_week",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    tierId: integer("tier_id")
+      .notNull()
+      .references(() => tier.id, { onDelete: "cascade" }),
+    weekNumber: integer("week_number").notNull(),
+    startedAt: integer("started_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [uniqueIndex("week_tier_number_uidx").on(t.tierId, t.weekNumber)],
+);
+
+export type RaidWeek = typeof raidWeek.$inferSelect;
+export type NewRaidWeek = typeof raidWeek.$inferInsert;
+
+/**
+ * One boss kill within a raid week.
+ *
+ * Page accumulation flows from this table: every player attached to
+ * the parent team gets `+1` page of the floor's token for every
+ * `boss_kill` row. Spending pages (`paid_with_pages = true` on a
+ * `loot_drop`) decrements the balance. The algorithm computes
+ * everything per-render so the persisted state stays minimal.
+ */
+export const bossKill = sqliteTable(
+  "boss_kill",
+  {
+    raidWeekId: integer("raid_week_id")
+      .notNull()
+      .references(() => raidWeek.id, { onDelete: "cascade" }),
+    floorId: integer("floor_id")
+      .notNull()
+      .references(() => floor.id, { onDelete: "cascade" }),
+    clearedAt: integer("cleared_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [primaryKey({ columns: [t.raidWeekId, t.floorId] })],
+);
+
+export type BossKill = typeof bossKill.$inferSelect;
+export type NewBossKill = typeof bossKill.$inferInsert;
+
+/**
+ * One loot drop assigned to a player (or unassigned).
+ *
+ * `pickedByAlgorithm` records whether the recommendation was accepted
+ * as-is (`true`) or overridden manually (`false`). The full score
+ * snapshot of the time of decision is persisted in `scoreSnapshot`
+ * so the UI can render historical breakdowns even after the algorithm
+ * is tweaked. `paidWithPages` flips the meaning: instead of "this is
+ * a boss drop", the row records "this player spent floor tokens to
+ * buy the item" — useful for the page-counter view and to keep the
+ * gear tracker complete.
+ *
+ * `recipientId` is nullable because a drop can also fall to an
+ * unattached recipient (PUG, the floor, etc.); the spreadsheet has a
+ * "Notes" column for those cases that we surface here.
+ */
+export const lootDrop = sqliteTable(
+  "loot_drop",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    raidWeekId: integer("raid_week_id")
+      .notNull()
+      .references(() => raidWeek.id, { onDelete: "cascade" }),
+    floorId: integer("floor_id")
+      .notNull()
+      .references(() => floor.id, { onDelete: "cascade" }),
+    itemKey: text("item_key").notNull(),
+    recipientId: integer("recipient_id").references(() => player.id, {
+      onDelete: "set null",
+    }),
+    paidWithPages: integer("paid_with_pages", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    pickedByAlgorithm: integer("picked_by_algorithm", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    scoreSnapshot: text("score_snapshot", { mode: "json" }).$type<unknown>(),
+    notes: text("notes"),
+    awardedAt: integer("awarded_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [
+    index("loot_week_floor_idx").on(t.raidWeekId, t.floorId),
+    index("loot_recipient_idx").on(t.recipientId),
+  ],
+);
+
+export type LootDrop = typeof lootDrop.$inferSelect;
+export type NewLootDrop = typeof lootDrop.$inferInsert;
+
+/**
+ * Per-player, per-floor adjustment used to correct page counts in
+ * edge cases the auto-derivation can't see (player joined mid-tier
+ * with carry-over, missed a week before the app was deployed, pages
+ * earned from coffers, alliance raids, etc.). Composite primary key
+ * on (player, tier, floor_number) so each combination has at most one
+ * row.
+ *
+ * `delta` is a signed integer; +N means "add N pages of that floor
+ * for this player", −N means "subtract N".
+ */
+export const pageAdjust = sqliteTable(
+  "page_adjust",
+  {
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => player.id, { onDelete: "cascade" }),
+    tierId: integer("tier_id")
+      .notNull()
+      .references(() => tier.id, { onDelete: "cascade" }),
+    floorNumber: integer("floor_number").notNull(),
+    delta: integer("delta").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.playerId, t.tierId, t.floorNumber] })],
+);
+
+export type PageAdjust = typeof pageAdjust.$inferSelect;
+export type NewPageAdjust = typeof pageAdjust.$inferInsert;
