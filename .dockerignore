@@ -1,0 +1,56 @@
+# Files that should never end up inside the build context.
+# Anything matched here is invisible to the COPY commands in Dockerfile,
+# which keeps the image small and avoids accidentally shipping local
+# dev artefacts (tests, caches, configuration intended for the host).
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Local dev environment
+.env
+.env.local
+.env.*.local
+.vscode
+.idea
+.DS_Store
+
+# Build outputs
+.next
+out
+build
+dist
+
+# Dependencies (re-installed in the deps stage)
+node_modules
+
+# Tests + coverage
+coverage
+test-results
+playwright-report
+playwright/.cache
+e2e
+
+# Database files (mounted via volume in production)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Documentation that doesn't need to ship
+README.md
+ROADMAP.md
+CHANGELOG.md
+docs
+
+# Tooling configs that aren't needed at build time
+.editorconfig
+.prettierrc
+biome.json
+playwright.config.ts
+vitest.config.mts
+
+# Cache directories
+.turbo
+.vercel
+.cache

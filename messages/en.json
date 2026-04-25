@@ -1,0 +1,14 @@
+{
+  "app": {
+    "title": "Smelly Loot",
+    "subtitle": "Self-hosted loot distribution for FF XIV savage raid statics.",
+    "phaseNote": "Phase 0 scaffold — see {file} for the build plan."
+  },
+  "locale": {
+    "label": "Language",
+    "names": {
+      "en": "English",
+      "de": "German"
+    }
+  }
+}

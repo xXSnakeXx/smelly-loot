@@ -2,7 +2,11 @@
 /node_modules
 /.pnp
 .pnp.*
-.yarn/install-state.gz
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
 # Testing
 /coverage
@@ -15,7 +19,7 @@
 /.next/
 /out/
 *.tsbuildinfo
-next-env.d.ts.bak
+next-env.d.ts
 
 # Production builds
 /build
@@ -28,7 +32,7 @@ data/*.db-wal
 *.sqlite
 *.sqlite-journal
 
-# Local env files
+# Local env files (NOTE: .env.example is committed; only ignore actual env values)
 .env
 .env.local
 .env.*.local
