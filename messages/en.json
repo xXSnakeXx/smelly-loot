@@ -111,6 +111,58 @@
       "melee": "Melee DPS",
       "phys_range": "Phys-Ranged DPS",
       "caster": "Caster DPS"
+    },
+    "detail": {
+      "back": "Back to players",
+      "noBis": "No BiS plan recorded yet — set the desired source per slot below to get started.",
+      "gearLink": "Gear-set link"
     }
+  },
+  "bis": {
+    "title": "Best in Slot",
+    "description": "Per-slot plan. Changes save automatically.",
+    "table": {
+      "slot": "Slot",
+      "desired": "Desired",
+      "current": "Current",
+      "marker": "Marker",
+      "received": "Received"
+    },
+    "slots": {
+      "Weapon": "Weapon",
+      "Offhand": "Offhand",
+      "Head": "Head",
+      "Chestpiece": "Chest",
+      "Gloves": "Gloves",
+      "Pants": "Pants",
+      "Boots": "Boots",
+      "Earring": "Earring",
+      "Necklace": "Necklace",
+      "Bracelet": "Bracelet",
+      "Ring1": "Ring 1",
+      "Ring2": "Ring 2"
+    },
+    "sources": {
+      "Savage": "Savage",
+      "TomeUp": "Tome Up",
+      "Catchup": "Catchup",
+      "Tome": "Tome",
+      "Extreme": "Extreme",
+      "Relic": "Relic",
+      "Crafted": "Crafted",
+      "WHYYYY": "WHYYYY",
+      "JustNo": "Just no.",
+      "NotPlanned": "—"
+    },
+    "markers": {
+      "none": "—",
+      "pages": "📃 Paid with pages",
+      "craft": "🔨 Will craft",
+      "nextUpgrade": "◀️ Next upgrade",
+      "saveToken": "💾 Save token",
+      "tomes": "💰 Bought (tomes/etc.)"
+    },
+    "savedToast": "BiS choice saved.",
+    "saveErrorToast": "Failed to save — please retry."
   }
 }

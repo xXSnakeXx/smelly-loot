@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Link } from "@/i18n/navigation";
 import type { Player } from "@/lib/db/schema";
 import { jobToGearRole } from "@/lib/ffxiv/jobs";
 
@@ -51,7 +52,14 @@ export function PlayersTable({ players }: PlayersTableProps) {
           const role = jobToGearRole(player.mainJob);
           return (
             <TableRow key={player.id}>
-              <TableCell className="font-medium">{player.name}</TableCell>
+              <TableCell className="font-medium">
+                <Link
+                  href={`/players/${player.id}`}
+                  className="underline-offset-4 hover:underline"
+                >
+                  {player.name}
+                </Link>
+              </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs">{player.mainJob}</span>
