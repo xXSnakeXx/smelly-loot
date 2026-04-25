@@ -7,6 +7,40 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-04-25
+
+### Added
+
+- **Full Heavyweight loot history import.** The `import:tier`
+  script now reproduces the spreadsheet's "Heavyweight Loot" tab
+  in addition to the gear tracker:
+  - 13 raid weeks with kills derived from per-week recipient
+    activity. Totals: F1=13, F2=12, F3=9, F4=2.
+  - 138 loot drops across the four floors. The dashboard's tier
+    card and the per-player Savage-drops counter populate
+    accordingly, and the tier-detail History tab now shows the
+    full week-by-week distribution.
+  - Drops awarded outside the static (PUG, dropped to floor) land
+    as `recipient_id = NULL` and surface as "—" in the History
+    tab, matching the spreadsheet's `(Other)` entries.
+  - Page-token, F4 coffer, F4 chestpiece-from-coffer, and Mount
+    columns are intentionally skipped — they're outside our
+    `ITEM_KEYS` schema.
+
+### Changed
+
+- Player **The Black Mage → Brad** (DB rename).
+  The gear tracker tab used "The Black Mage" as a placeholder
+  joke name; the loot tab uses the canonical character name. The
+  rename is run automatically by the import script and is
+  idempotent (no-op once it has happened).
+- The import script's `raid_week` / `boss_kill` / `loot_drop`
+  steps are now **destructive on re-run**: they delete every row
+  scoped to the active tier before re-importing so the
+  spreadsheet stays the single source of truth. `bis_choice`,
+  `page_adjust`, and `player` rows are still upserted (UI edits
+  between runs survive).
+
 ## [1.2.2] - 2026-04-25
 
 ### Changed
