@@ -164,5 +164,51 @@
     },
     "savedToast": "BiS choice saved.",
     "saveErrorToast": "Failed to save — please retry."
+  },
+  "loot": {
+    "title": "Loot distribution",
+    "description": "Record boss kills and assign drops; the engine recommends a recipient per item.",
+    "noWeeks": {
+      "title": "No raid weeks recorded yet.",
+      "description": "Start the first raid week to begin tracking kills and loot.",
+      "cta": "Start first raid week"
+    },
+    "header": {
+      "weekLabel": "Week {number}",
+      "started": "Started {date}",
+      "newWeek": "Start new week"
+    },
+    "floor": {
+      "label": "Floor {number}",
+      "notKilled": "Not killed yet",
+      "killed": "Cleared {date}",
+      "killCta": "Mark as cleared",
+      "undoKill": "Undo clear",
+      "tracked": "Algorithm-recommended",
+      "untracked": "Logged manually"
+    },
+    "drop": {
+      "recommended": "Recommended:",
+      "noEligible": "No eligible recipient — every player is either covered by pages or doesn't want this drop.",
+      "awarded": "Awarded to {name}",
+      "accept": "Award to {name}",
+      "manual": "Other player…",
+      "undo": "Undo",
+      "paidWithPages": "Paid with pages",
+      "scoreLabel": "Score",
+      "needLabel": "Need",
+      "pagesLabel": "Pages",
+      "manualPickerTitle": "Choose a different recipient",
+      "manualPickerDescription": "All players sorted by algorithm score. Pick anyone — it'll be recorded as a manual override.",
+      "scoreBreakdown": "{need} need × {role} × {ilv} × {fairness} − {recency}"
+    },
+    "toasts": {
+      "weekStarted": "New raid week started.",
+      "killRecorded": "Boss kill recorded.",
+      "killUndone": "Boss kill undone.",
+      "dropAwarded": "Drop assigned to {name}.",
+      "dropUndone": "Drop assignment undone.",
+      "error": "Something went wrong — please retry."
+    }
   }
 }

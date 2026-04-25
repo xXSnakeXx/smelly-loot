@@ -164,5 +164,51 @@
     },
     "savedToast": "BiS-Eintrag gespeichert.",
     "saveErrorToast": "Speichern fehlgeschlagen — bitte erneut versuchen."
+  },
+  "loot": {
+    "title": "Loot-Verteilung",
+    "description": "Boss-Kills erfassen und Drops zuweisen; die Engine empfiehlt pro Item einen Empfänger.",
+    "noWeeks": {
+      "title": "Noch keine Raid-Woche erfasst.",
+      "description": "Starte die erste Raid-Woche, um Kills und Loot zu tracken.",
+      "cta": "Erste Raid-Woche starten"
+    },
+    "header": {
+      "weekLabel": "Woche {number}",
+      "started": "Gestartet {date}",
+      "newWeek": "Neue Woche starten"
+    },
+    "floor": {
+      "label": "Floor {number}",
+      "notKilled": "Noch nicht gekillt",
+      "killed": "Gekillt am {date}",
+      "killCta": "Als gekillt markieren",
+      "undoKill": "Kill zurücknehmen",
+      "tracked": "Mit Empfehlungs-Engine",
+      "untracked": "Manuell"
+    },
+    "drop": {
+      "recommended": "Empfehlung:",
+      "noEligible": "Kein berechtigter Empfänger — entweder hat jeder Spieler genug Pages oder will den Drop nicht.",
+      "awarded": "An {name} vergeben",
+      "accept": "An {name} vergeben",
+      "manual": "Anderen Spieler wählen…",
+      "undo": "Rückgängig",
+      "paidWithPages": "Mit Pages bezahlt",
+      "scoreLabel": "Score",
+      "needLabel": "Bedarf",
+      "pagesLabel": "Pages",
+      "manualPickerTitle": "Anderen Empfänger wählen",
+      "manualPickerDescription": "Alle Spieler sortiert nach Algorithmus-Score. Wähle irgendwen — wird als manueller Override erfasst.",
+      "scoreBreakdown": "{need} Bedarf × {role} × {ilv} × {fairness} − {recency}"
+    },
+    "toasts": {
+      "weekStarted": "Neue Raid-Woche gestartet.",
+      "killRecorded": "Boss-Kill erfasst.",
+      "killUndone": "Boss-Kill zurückgenommen.",
+      "dropAwarded": "Drop an {name} vergeben.",
+      "dropUndone": "Drop-Zuweisung zurückgenommen.",
+      "error": "Etwas ist schiefgelaufen — bitte erneut versuchen."
+    }
   }
 }

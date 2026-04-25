@@ -1,8 +1,8 @@
 import { type GearRole, ROLE_WEIGHTS } from "@/lib/ffxiv/jobs";
 import {
   type BisSource,
-  ilvForSource,
   type ItemKey,
+  ilvForSource,
   type Slot,
   type SourceIlvLookup,
 } from "@/lib/ffxiv/slots";
@@ -204,8 +204,7 @@ function scoreGear(
 
   // How many of the relevant slots want this drop's source?
   const slotsWanting = slotsForItem.filter(
-    (slot) =>
-      (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource,
+    (slot) => (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource,
   ).length;
 
   // How many of those slots already wear the drop's source?
