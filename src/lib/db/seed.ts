@@ -32,7 +32,12 @@ const DEFAULT_TEAM_NAME = "Mannschaft Smelly";
 const DEFAULT_TEAM_LOCALE = "en";
 
 const HEAVYWEIGHT_TIER_NAME = "Arcadion Heavyweight Savage";
-const HEAVYWEIGHT_MAX_ILV = 795;
+// 790 is the general Savage gear iLv — only the floor-4 weapon goes
+// to 795. Since floor 4 is `tracked_for_algorithm = false` (the team
+// distributes the weapon outside the page-cost system), the
+// algorithm-relevant max is 790; we cascade every other source iLv
+// off that.
+const HEAVYWEIGHT_MAX_ILV = 790;
 
 /**
  * Idempotently install the seed data described above.
