@@ -8,7 +8,8 @@
     "players": "Players",
     "tier": "Tier",
     "loot": "Loot",
-    "history": "History"
+    "history": "History",
+    "settings": "Settings"
   },
   "theme": {
     "toggle": "Toggle theme",
@@ -30,12 +31,36 @@
     "maxIlv": "Max iLv",
     "weekNumber": "Week",
     "noWeeks": "No raid weeks recorded yet.",
-    "quickActions": {
-      "title": "Quick actions",
-      "newWeek": "Start new raid week",
-      "addPlayer": "Add player",
-      "editTier": "Edit tier",
-      "manageTeam": "Manage team"
+    "tiers": {
+      "title": "Tiers",
+      "description": "Click a tier to open its loot tracker, history and settings. Use the plus card to roll over to a new tier.",
+      "active": "Active",
+      "archived": "Archived",
+      "stats": {
+        "weeks": "Weeks",
+        "kills": "Kills",
+        "drops": "Drops"
+      },
+      "newCard": {
+        "title": "New tier",
+        "description": "Roll over to a new raid tier"
+      }
+    },
+    "newTier": {
+      "title": "Create a new tier",
+      "description": "Creates the floor layout and buy costs from the Heavyweight defaults. The previously-active tier is archived but kept read-only.",
+      "name": {
+        "label": "Name",
+        "placeholder": "e.g. Arcadion Heavyweight Savage"
+      },
+      "maxIlv": {
+        "label": "Max iLv",
+        "help": "Highest item level the tier can produce — typically the upgraded Savage piece."
+      },
+      "submit": "Create tier",
+      "cancel": "Cancel",
+      "createdToast": "Tier created.",
+      "errorToast": "Could not create tier."
     }
   },
   "team": {
@@ -232,7 +257,9 @@
     "description": "Plan future weeks and track this week's actual drops.",
     "tabs": {
       "plan": "Plan",
-      "track": "Track"
+      "track": "Track",
+      "history": "History",
+      "settings": "Settings"
     },
     "plan": {
       "title": "Suggested timeline",

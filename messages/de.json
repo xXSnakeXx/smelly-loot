@@ -8,7 +8,8 @@
     "players": "Spieler",
     "tier": "Tier",
     "loot": "Loot",
-    "history": "Historie"
+    "history": "Historie",
+    "settings": "Einstellungen"
   },
   "theme": {
     "toggle": "Design wechseln",
@@ -30,12 +31,36 @@
     "maxIlv": "Max iLv",
     "weekNumber": "Woche",
     "noWeeks": "Noch keine Raid-Wochen erfasst.",
-    "quickActions": {
-      "title": "Schnellaktionen",
-      "newWeek": "Neue Raid-Woche starten",
-      "addPlayer": "Spieler hinzufügen",
-      "editTier": "Tier bearbeiten",
-      "manageTeam": "Team verwalten"
+    "tiers": {
+      "title": "Tiers",
+      "description": "Klicke auf ein Tier, um Loot, Historie und Einstellungen zu öffnen. Über die Plus-Card legst du ein neues Tier an.",
+      "active": "Aktiv",
+      "archived": "Archiviert",
+      "stats": {
+        "weeks": "Wochen",
+        "kills": "Kills",
+        "drops": "Drops"
+      },
+      "newCard": {
+        "title": "Neues Tier",
+        "description": "Tier-Wechsel auf neue Raid-Tier"
+      }
+    },
+    "newTier": {
+      "title": "Neues Tier anlegen",
+      "description": "Übernimmt das Standard-Floor-Layout und die Buy-Costs der Heavyweight-Tier. Das bisher aktive Tier wird archiviert, bleibt aber lesbar erhalten.",
+      "name": {
+        "label": "Name",
+        "placeholder": "z.B. Arcadion Heavyweight Savage"
+      },
+      "maxIlv": {
+        "label": "Max iLv",
+        "help": "Höchste Item-Stufe, die in der Tier vorkommt — typischerweise das verbesserte Savage-Piece."
+      },
+      "submit": "Tier anlegen",
+      "cancel": "Abbrechen",
+      "createdToast": "Tier angelegt.",
+      "errorToast": "Tier konnte nicht angelegt werden."
     }
   },
   "team": {
@@ -232,7 +257,9 @@
     "description": "Plane zukünftige Wochen und tracke die aktuellen Drops.",
     "tabs": {
       "plan": "Plan",
-      "track": "Tracking"
+      "track": "Tracking",
+      "history": "Historie",
+      "settings": "Einstellungen"
     },
     "plan": {
       "title": "Vorgeschlagene Timeline",
