@@ -1,0 +1,14 @@
+services:
+  web:
+    build: .
+    image: smelly-loot:latest
+    container_name: smelly-loot
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      # Persist the SQLite database and any other runtime artefacts
+      # under data/ so container rebuilds keep the loot history.
+      - ./data:/app/data

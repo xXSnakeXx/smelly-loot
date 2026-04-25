@@ -25,7 +25,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Pin a single worker on CI for deterministic ordering of database
+  // mutations; locally let Playwright pick the optimal count by
+  // omitting the key entirely (the strict typing forbids `undefined`).
+  ...(process.env.CI ? { workers: 1 } : {}),
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
