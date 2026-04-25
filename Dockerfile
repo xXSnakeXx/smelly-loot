@@ -87,10 +87,13 @@ USER node
 
 EXPOSE 3000
 
-# Lightweight HTTP healthcheck — hitting the redirect on / verifies the
-# proxy is alive without depending on any specific page.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
+# Lightweight HTTP healthcheck. Uses 127.0.0.1 explicitly because
+# `localhost` inside the container resolves to both `::1` and
+# `127.0.0.1`, and busybox wget picks IPv6 first — but Next.js's
+# standalone server binds to IPv4 only. Hits the default-locale page
+# instead of `/` to avoid the 307 redirect that `--spider` rejects.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget --quiet --tries=1 -O /dev/null http://127.0.0.1:3000/en || exit 1
 
 # The Next.js standalone server runs migrations through the
 # instrumentation hook before opening the HTTP listener, so a single
