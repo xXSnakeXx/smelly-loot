@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-04-25
+
+### Fixed
+
+- Imported historical drops are now marked
+  `picked_by_algorithm = true` so the History tab no longer paints
+  every imported row with a noisy "manual override" badge. There
+  was no algorithm running at the time those distributions
+  happened, so flagging them as overrides was both visually noisy
+  and semantically wrong. Future drops awarded via the in-app flow
+  still record the real algorithm-vs-pick distinction the badge
+  was designed for.
+
 ## [1.3.0] - 2026-04-25
 
 ### Added
