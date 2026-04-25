@@ -84,37 +84,55 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  /*
+   * Dark palette: deep slate with a faint cool tint instead of pure
+   * black/neutral grey. The hue (≈252) sits in the blue range; the
+   * tiny chroma (~0.012) keeps the surface from looking like a
+   * Photoshop swatch. Lightness levels are deliberately a few notches
+   * brighter than shadcn's neutral default so the UI feels less
+   * cave-like under prolonged use.
+   *
+   *   Layer            Lightness  Notes
+   *   --------------   ---------  -------------------------------------
+   *   background        0.205     was 0.145 — much closer to GitHub
+   *                                Dark Dimmed than to OLED black.
+   *   card / popover    0.262     elevated surface for cards.
+   *   secondary/muted   0.305     subtle hover / divider tone.
+   *   foreground        0.965     just shy of white.
+   *   muted-foreground  0.735     bumped from 0.708 for readability
+   *                                on the new lighter background.
+   */
+  --background: oklch(0.205 0.012 252);
+  --foreground: oklch(0.965 0.004 252);
+  --card: oklch(0.262 0.013 252);
+  --card-foreground: oklch(0.965 0.004 252);
+  --popover: oklch(0.262 0.013 252);
+  --popover-foreground: oklch(0.965 0.004 252);
+  --primary: oklch(0.92 0.008 252);
+  --primary-foreground: oklch(0.21 0.012 252);
+  --secondary: oklch(0.305 0.013 252);
+  --secondary-foreground: oklch(0.965 0.004 252);
+  --muted: oklch(0.305 0.013 252);
+  --muted-foreground: oklch(0.735 0.012 252);
+  --accent: oklch(0.305 0.013 252);
+  --accent-foreground: oklch(0.965 0.004 252);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.6 0.013 252);
+  --chart-1: oklch(0.85 0.05 252);
+  --chart-2: oklch(0.6 0.05 252);
+  --chart-3: oklch(0.5 0.05 252);
+  --chart-4: oklch(0.42 0.05 252);
+  --chart-5: oklch(0.305 0.05 252);
+  --sidebar: oklch(0.262 0.013 252);
+  --sidebar-foreground: oklch(0.965 0.004 252);
   --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-primary-foreground: oklch(0.965 0.004 252);
+  --sidebar-accent: oklch(0.305 0.013 252);
+  --sidebar-accent-foreground: oklch(0.965 0.004 252);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.6 0.013 252);
 }
 
 @layer base {
