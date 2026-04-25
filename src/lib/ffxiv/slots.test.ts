@@ -51,28 +51,33 @@ describe("ITEM_KEYS", () => {
 });
 
 describe("deriveSourceIlvs", () => {
-  it("derives the Heavyweight tier numbers from max_ilv = 795", () => {
-    const ilvs = deriveSourceIlvs(795);
-    expect(ilvs.Savage).toBe(795);
+  it("derives the Heavyweight tier numbers from max_ilv = 790", () => {
+    // The Heavyweight Savage tier caps at 790 for everything except
+    // the floor-4 weapon (795) — which the algorithm doesn't compete
+    // on. TomeUp lands on the same 790 cap (an upgraded tome piece
+    // reaches the Savage iLv exactly); Catchup and Tome both sit at
+    // 780.
+    const ilvs = deriveSourceIlvs(790);
+    expect(ilvs.Savage).toBe(790);
     expect(ilvs.TomeUp).toBe(790);
-    expect(ilvs.Catchup).toBe(785);
+    expect(ilvs.Catchup).toBe(780);
     expect(ilvs.Tome).toBe(780);
-    expect(ilvs.Extreme).toBe(775);
-    expect(ilvs.Relic).toBe(775);
-    expect(ilvs.Crafted).toBe(770);
-    expect(ilvs.WHYYYY).toBe(765);
-    expect(ilvs.JustNo).toBe(755);
+    expect(ilvs.Extreme).toBe(770);
+    expect(ilvs.Relic).toBe(770);
+    expect(ilvs.Crafted).toBe(765);
+    expect(ilvs.WHYYYY).toBe(760);
+    expect(ilvs.JustNo).toBe(750);
   });
 
-  it("scales linearly to a future tier with max_ilv = 845", () => {
-    const ilvs = deriveSourceIlvs(845);
-    expect(ilvs.Savage).toBe(845);
+  it("scales linearly to a future tier with max_ilv = 840", () => {
+    const ilvs = deriveSourceIlvs(840);
+    expect(ilvs.Savage).toBe(840);
     expect(ilvs.TomeUp).toBe(840);
-    expect(ilvs.JustNo).toBe(805);
+    expect(ilvs.JustNo).toBe(800);
   });
 
   it("returns an entry for every BiS source", () => {
-    const ilvs = deriveSourceIlvs(795);
+    const ilvs = deriveSourceIlvs(790);
     for (const source of BIS_SOURCES) {
       expect(ilvs[source]).toBeDefined();
     }
@@ -84,14 +89,20 @@ describe("DEFAULT_ILV_DELTAS", () => {
     expect(DEFAULT_ILV_DELTAS.Savage).toBe(0);
   });
 
-  it("monotonically decreases through the spreadsheet's legend order", () => {
-    expect(DEFAULT_ILV_DELTAS.Savage).toBeGreaterThan(
+  it("non-strictly decreases through the spreadsheet's legend order", () => {
+    // Pairs are allowed to share an iLv (Savage = TomeUp at cap,
+    // Catchup = Tome at cap − 10) since the upgraded tome piece
+    // reaches the Savage iLv exactly.
+    expect(DEFAULT_ILV_DELTAS.Savage).toBeGreaterThanOrEqual(
       DEFAULT_ILV_DELTAS.TomeUp,
     );
     expect(DEFAULT_ILV_DELTAS.TomeUp).toBeGreaterThan(
       DEFAULT_ILV_DELTAS.Catchup,
     );
-    expect(DEFAULT_ILV_DELTAS.Catchup).toBeGreaterThan(DEFAULT_ILV_DELTAS.Tome);
+    expect(DEFAULT_ILV_DELTAS.Catchup).toBeGreaterThanOrEqual(
+      DEFAULT_ILV_DELTAS.Tome,
+    );
+    expect(DEFAULT_ILV_DELTAS.Tome).toBeGreaterThan(DEFAULT_ILV_DELTAS.Crafted);
     expect(DEFAULT_ILV_DELTAS.Crafted).toBeGreaterThan(
       DEFAULT_ILV_DELTAS.WHYYYY,
     );

@@ -74,12 +74,19 @@ export type ItemKey = (typeof ITEM_KEYS)[number];
  * Default iLv deltas applied on top of a tier's `max_ilv` to populate
  * the per-source iLvs. Operators can override individual values during
  * tier creation if a future patch breaks the pattern.
+ *
+ * Pairs intentionally land on the same iLv:
+ * - `Savage` and `TomeUp` are both at the cap (the upgraded tome
+ *   piece reaches the same iLv as the raw Savage drop).
+ * - `Catchup` and `Tome` share `max - 10` — augmented crafted /
+ *   alliance-raid / mid-tier extreme drops at the same iLv as the
+ *   raw, non-upgraded weekly tome cap.
  */
 export const DEFAULT_ILV_DELTAS: Record<BisSource, number> = {
   Savage: 0,
-  TomeUp: -5,
+  TomeUp: 0,
   Catchup: -10,
-  Tome: -15,
+  Tome: -10,
   Extreme: -20,
   Relic: -20,
   Crafted: -25,
