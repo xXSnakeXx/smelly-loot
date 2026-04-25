@@ -1,28 +1,39 @@
 /* eslint-disable no-console */
 /**
  * One-shot import of Mannschaft Smelly's "Arcadion Heavyweight Savage"
- * tier data from the original Google-Sheets tracker.
+ * tier snapshot from the original Google-Sheets tracker.
  *
  * Run with:
  *
- *   pnpm tsx scripts/import-tier-data.ts
+ *   pnpm import:tier
  *
- * The script is idempotent: it upserts BiS choices, page adjustments,
- * raid weeks, and boss kills, so re-running it after the team has
- * already touched the UI overwrites the imported snapshot but leaves
- * any *new* data the team has added in place. It does NOT insert
- * synthetic loot drops — page balances are reproduced via
- * `page_adjust` rows so the Track tab can still record real future
- * drops without double-counting historical purchases.
+ * The script reproduces three tabs from the spreadsheet:
  *
- * The data was transcribed from the spreadsheet snapshot the user
- * provided when smelly-loot was first scaffolded.
+ *   - **Mannschaft Smelly Gear Tracker** — player metadata (alt
+ *     jobs, gear-set links, notes), the 12-slot BiS plan per
+ *     player, plus the "Pages Adjust" overrides surfaced for the
+ *     player who joined mid-tier.
+ *   - **Heavyweight Loot** — the per-week distribution table.
+ *     Every Recipient cell becomes a `loot_drop` row, and the
+ *     presence of a recipient on a given floor in a given week
+ *     marks that floor as cleared (`boss_kill`).
+ *   - The team-clears row (which in the gear tracker showed
+ *     F1=9 / F2=8 / F3=6 / F4=0 as of week 9) is *not* used as a
+ *     source of truth — the loot tab is more recent and is
+ *     authoritative. Page balances are derived as
+ *     `kills + page_adjust − tokens_spent`, where `tokens_spent`
+ *     counts `loot_drop` rows with `paid_with_pages = true`. The
+ *     spreadsheet doesn't distinguish between natural drops and
+ *     token purchases, so every imported drop lands as
+ *     `paid_with_pages = false`; if a downstream user wants the
+ *     "Spent" column to reflect actual page-buys, they can flip
+ *     individual drops in the UI.
  *
- * To reset and re-import from scratch:
- *
- *   sqlite3 data/loot.db "DELETE FROM bis_choice; DELETE FROM page_adjust;
- *                         DELETE FROM boss_kill;  DELETE FROM raid_week;"
- *   pnpm tsx scripts/import-tier-data.ts
+ * The script is **destructive for raid_week / boss_kill / loot_drop**
+ * (every row scoped to the active tier is deleted before re-import)
+ * but **non-destructive for bis_choice / page_adjust / player**
+ * (those are upserted, so manual UI edits the team has made between
+ * runs survive).
  */
 
 import { resolve } from "node:path";
@@ -33,6 +44,8 @@ config({ path: resolve(process.cwd(), ".env") });
 
 const databaseUrl = process.env.DATABASE_URL ?? "file:data/loot.db";
 const client = createClient({ url: databaseUrl });
+
+// ─── Player snapshot ───────────────────────────────────────────────
 
 interface PlayerImport {
   /** Spreadsheet name — must match `player.name`. */
@@ -51,38 +64,28 @@ interface PlayerImport {
     marker?: string;
   }>;
   /**
-   * "Spent Pages" per floor (1..4). Each value represents how many
-   * pages the player has historically spent buying items off that
-   * floor's vendor. We translate it into a negative `page_adjust` so
-   * the displayed balance matches the spreadsheet without us having
-   * to back-fill synthetic loot-drop rows.
+   * "Spent Pages" per floor (1..4) from the gear tracker's W9 snapshot.
+   * Translated into a negative `page_adjust` so the W9 balance reads
+   * as the spreadsheet did. New kills logged after W9 push the
+   * balance up by one per kill, which is the correct behaviour as
+   * long as no further token purchases happen.
    */
   spentPages: [number, number, number, number];
   /**
    * Optional spreadsheet "Pages Adjust" override (per floor). Added
-   * on top of `-spentPages`. Only used by The Black Mage in the
-   * snapshot we have.
+   * on top of `-spentPages`. The Black Mage / Brad has -2 across
+   * the first three floors in the gear tracker.
    */
   pagesAdjust?: [number, number, number, number];
 }
 
 /**
- * Team kill counts per floor as of the spreadsheet snapshot.
- *
- * Floor 4 stays at 0 — the team's policy is to track but not score
- * weapon distribution (Topic 3 in the roadmap), and no Floor 4 kill
- * had been logged at the time of import.
- */
-const TEAM_KILLS_PER_FLOOR: Record<1 | 2 | 3 | 4, number> = {
-  1: 9,
-  2: 8,
-  3: 6,
-  4: 0,
-};
-
-/**
- * BiS + page snapshot per player. Order mirrors the spreadsheet
- * column layout (Fara, Kuda, Kaz, S'ndae, Quah, Rei, Peter, BLM).
+ * BiS + page snapshot per player. Order mirrors the gear-tracker
+ * column layout. The gear tracker uses "The Black Mage" as a
+ * placeholder name for Brad; the loot tab uses "Brad" directly.
+ * The script renames `player.name` from "The Black Mage" → "Brad"
+ * before doing anything else, so the BiS plan transcribed below
+ * lands on the correctly-named row.
  *
  * `marker` codes follow the spreadsheet legend:
  *   📃 = bought via pages
@@ -303,7 +306,7 @@ const PLAYERS: PlayerImport[] = [
     spentPages: [3, 6, 4, 0],
   },
   {
-    name: "The Black Mage",
+    name: "Brad",
     altJobs: [],
     gearLink:
       "https://xivgear.app/?page=sl|08698620-8f30-42df-b4c8-df525fe78a95&onlySetIndex=0",
@@ -331,8 +334,343 @@ const PLAYERS: PlayerImport[] = [
   },
 ];
 
+// ─── Loot history ──────────────────────────────────────────────────
+
+/**
+ * Maps a column position in the spreadsheet's loot tab to an item /
+ * floor pair. Positions that we deliberately don't import (page
+ * tokens, F4 coffer / chestpiece-from-coffer, the Mount cosmetic)
+ * are `null`.
+ *
+ * The columns mirror the loot tab's header row exactly:
+ *
+ *   0  Earring        F1
+ *   1  Necklace       F1
+ *   2  Bracelet       F1
+ *   3  Ring           F1
+ *   4  Head           F2
+ *   5  Gloves         F2
+ *   6  Boots          F2
+ *   7  Token          F2  (skip — page-token cosmetic counter)
+ *   8  Glaze          F2
+ *   9  Chestpiece     F3
+ *   10 Pants          F3
+ *   11 Twine          F3
+ *   12 Ester          F3
+ *   13 Weapon         F4
+ *   14 Coffer         F4  (skip — page-token-token cosmetic)
+ *   15 Chestpiece F4  F4  (skip — duplicate slot)
+ *   16 Mount          F4  (skip — cosmetic)
+ */
+const POSITION_TO_ITEM: Array<{
+  itemKey: string;
+  floor: 1 | 2 | 3 | 4;
+} | null> = [
+  { itemKey: "Earring", floor: 1 },
+  { itemKey: "Necklace", floor: 1 },
+  { itemKey: "Bracelet", floor: 1 },
+  { itemKey: "Ring", floor: 1 },
+  { itemKey: "Head", floor: 2 },
+  { itemKey: "Gloves", floor: 2 },
+  { itemKey: "Boots", floor: 2 },
+  null,
+  { itemKey: "Glaze", floor: 2 },
+  { itemKey: "Chestpiece", floor: 3 },
+  { itemKey: "Pants", floor: 3 },
+  { itemKey: "Twine", floor: 3 },
+  { itemKey: "Ester", floor: 3 },
+  { itemKey: "Weapon", floor: 4 },
+  null,
+  null,
+  null,
+];
+
+/**
+ * Per-week recipient grid. Each entry has 17 cells matching
+ * `POSITION_TO_ITEM`. `null` means no recipient for that slot in
+ * that week (item didn't drop / wasn't distributed). The literal
+ * string `"(Other)"` means the recipient was outside the static
+ * (PUG, dropped to floor, etc.) — those rows land as
+ * `loot_drop.recipient_id = NULL` to preserve the entry without
+ * crediting it to anyone in the team.
+ *
+ * Transcribed from the Heavyweight Loot tab (weeks 1..13).
+ */
+const LOOT_HISTORY: ReadonlyArray<ReadonlyArray<string | null>> = [
+  // Week 1 — F1 only
+  [
+    "Peter",
+    "Rei",
+    "Brad",
+    "Quah",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 2 — F1 + F2
+  [
+    "Quah",
+    "Brad",
+    "Rei",
+    "S'ndae",
+    "Fara",
+    "Peter",
+    "Kaz",
+    "Rei",
+    "Quah",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 3 — F1 + F2
+  [
+    "Fara",
+    "Kaz",
+    "Peter",
+    "Kuda",
+    "Kuda",
+    "Rei",
+    "S'ndae",
+    "Peter",
+    "Brad",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 4 — F1 + F2 + F3 (Fara cleaned up F1 via tokens)
+  [
+    "Fara",
+    "Fara",
+    "Fara",
+    "Fara",
+    "Quah",
+    "S'ndae",
+    "Brad",
+    "Quah",
+    "Rei",
+    "Peter",
+    "Kaz",
+    "Kuda",
+    "Quah",
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 5
+  [
+    "Kaz",
+    "Kuda",
+    "Kuda",
+    "(Other)",
+    "(Other)",
+    "Kaz",
+    "Fara",
+    "Kaz",
+    "Kuda",
+    "Rei",
+    "Quah",
+    "Rei",
+    "Peter",
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 6
+  [
+    "S'ndae",
+    "Quah",
+    "Peter",
+    "Rei",
+    "Peter",
+    "Fara",
+    "S'ndae",
+    "Kuda",
+    "Peter",
+    "(Other)",
+    "(Other)",
+    "Quah",
+    "Rei",
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 7
+  [
+    "Rei",
+    "Kaz",
+    "Kuda",
+    "Brad",
+    "S'ndae",
+    "Kuda",
+    "Kuda",
+    "Peter",
+    "S'ndae",
+    "Fara",
+    "Brad",
+    "Brad",
+    "Kuda",
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 8
+  [
+    "Peter",
+    "Brad",
+    "Fara",
+    "Quah",
+    "Kaz",
+    "Peter",
+    "Quah",
+    "S'ndae",
+    "Fara",
+    "Brad",
+    "S'ndae",
+    "Brad",
+    "Brad",
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 9 — F1 + F2 only
+  [
+    "Kuda",
+    "Rei",
+    "Kaz",
+    "S'ndae",
+    "Peter",
+    "S'ndae",
+    "Rei",
+    null,
+    "Rei",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 10
+  [
+    "Quah",
+    "S'ndae",
+    "S'ndae",
+    "Kaz",
+    "Kaz",
+    "Peter",
+    "Rei",
+    null,
+    "Kaz",
+    "Kuda",
+    "Fara",
+    "Peter",
+    "Kaz",
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 11
+  [
+    "Brad",
+    "Peter",
+    "Brad",
+    "Kuda",
+    "Fara",
+    "Quah",
+    "Brad",
+    null,
+    "Kaz",
+    "Kaz",
+    "Quah",
+    "Rei",
+    "S'ndae",
+    null,
+    null,
+    null,
+    null,
+  ],
+  // Week 12 — F1 + F2 + F3 + F4 (first weapon)
+  [
+    "Kaz",
+    "Fara",
+    "Quah",
+    "Peter",
+    "Fara",
+    "Brad",
+    "Kaz",
+    null,
+    "Fara",
+    "Quah",
+    "Kuda",
+    "Quah",
+    "Peter",
+    "Kaz",
+    "Brad",
+    null,
+    "Fara",
+  ],
+  // Week 13 — F1 + F2 + F3 + F4 (second weapon)
+  [
+    "Kuda",
+    "S'ndae",
+    "Fara",
+    "Rei",
+    "Brad",
+    "Kuda",
+    "Fara",
+    null,
+    "Peter",
+    "S'ndae",
+    "Kaz",
+    "Quah",
+    "Brad",
+    "Kuda",
+    "S'ndae",
+    null,
+    "Rei",
+  ],
+];
+
+// ─── Main ──────────────────────────────────────────────────────────
+
 async function main(): Promise<void> {
   console.log(`[import] using database ${databaseUrl}`);
+
+  // 0. Rename the gear-tracker placeholder "The Black Mage" to the
+  // canonical character name "Brad" the loot tab uses. Idempotent —
+  // re-running the script is a no-op once the rename has happened.
+  await client.execute({
+    sql: "UPDATE player SET name = 'Brad' WHERE name = 'The Black Mage'",
+    args: [],
+  });
 
   // 1. Look up the active tier and its floors / players. Everything
   // we insert below is keyed off this tier id, so we fail loudly if
@@ -415,10 +753,14 @@ async function main(): Promise<void> {
     `[import] BiS choices upserted (${PLAYERS.reduce((s, p) => s + p.bis.length, 0)} rows)`,
   );
 
-  // 4. Upsert page adjustments per (player, tier, floor). The
-  // formula is `adjust = -spent + spreadsheet_adjust`, which keeps
-  // the displayed balance identical to the spreadsheet's
-  // `Current Pages` row.
+  // 4. Page adjustments per (player, tier, floor). The W9 gear-tracker
+  // snapshot reported `Spent Pages` per floor — those pages were
+  // already spent before this import script touched the DB, so we
+  // negate them as `page_adjust` to keep the displayed balance
+  // mathematically correct (`balance = kills + adjust − spent`,
+  // where `spent` is the count of `paid_with_pages = true` drops).
+  // Brad / The Black Mage carries an additional -2 across the first
+  // three floors per the gear tracker's "Pages Adjust" column.
   for (const player of PLAYERS) {
     const id = playerIdByName.get(player.name);
     if (!id) continue;
@@ -440,65 +782,95 @@ async function main(): Promise<void> {
   }
   console.log(`[import] page adjustments upserted`);
 
-  // 5. Raid weeks + boss kills.
-  // We model the team-clears row (F1=9, F2=8, F3=6, F4=0) as nine
-  // weeks with the kill schedule below. The exact week numbering
-  // doesn't matter for the algorithm (which only counts kills per
-  // floor), but a monotonic 1..9 sequence makes the History tab
-  // read sensibly.
-  const totalWeeks = TEAM_KILLS_PER_FLOOR[1];
-  for (let w = 1; w <= totalWeeks; w += 1) {
-    await client.execute({
-      sql: `INSERT INTO raid_week (tier_id, week_number, started_at)
-            VALUES (?, ?, unixepoch())
-            ON CONFLICT(tier_id, week_number) DO NOTHING`,
-      args: [tierId, w],
-    });
-  }
-  const weekRows = await client.execute({
-    sql: "SELECT id, week_number FROM raid_week WHERE tier_id = ? ORDER BY week_number",
+  // 5. Reset and re-import the per-tier raid weeks, boss kills, and
+  // loot drops. This is the only destructive part of the script:
+  // re-runs blow away the existing rows for this tier so the loot
+  // tab is the single source of truth. UI-side edits to drops will
+  // be lost on re-run, which is acceptable for a one-shot snapshot.
+  await client.execute({
+    sql: `DELETE FROM loot_drop WHERE raid_week_id IN
+            (SELECT id FROM raid_week WHERE tier_id = ?)`,
     args: [tierId],
   });
-  const weekIdByNumber = new Map<number, number>(
-    weekRows.rows.map((r) => [Number(r.week_number), Number(r.id)]),
-  );
+  await client.execute({
+    sql: `DELETE FROM boss_kill WHERE raid_week_id IN
+            (SELECT id FROM raid_week WHERE tier_id = ?)`,
+    args: [tierId],
+  });
+  await client.execute({
+    sql: "DELETE FROM raid_week WHERE tier_id = ?",
+    args: [tierId],
+  });
 
-  // Schedule: oldest weeks are F1-only progression weeks, then F1+F2,
-  // then full F1+F2+F3 clears. Pick the schedule so the totals match
-  // (F1=9, F2=8, F3=6).
-  const f1Weeks = totalWeeks; // 9
-  const f2Weeks = TEAM_KILLS_PER_FLOOR[2]; // 8 — skip the earliest week
-  const f3Weeks = TEAM_KILLS_PER_FLOOR[3]; // 6 — skip the three earliest
+  let totalDrops = 0;
+  let totalKills = 0;
+  for (const [weekIdx, recipients] of LOOT_HISTORY.entries()) {
+    const weekNumber = weekIdx + 1;
+    const insertedWeek = await client.execute({
+      sql: `INSERT INTO raid_week (tier_id, week_number, started_at)
+            VALUES (?, ?, unixepoch())
+            RETURNING id`,
+      args: [tierId, weekNumber],
+    });
+    const weekId = Number(insertedWeek.rows[0]?.id);
+    if (!weekId)
+      throw new Error(`[import] failed to insert week ${weekNumber}`);
 
-  for (let w = 1; w <= totalWeeks; w += 1) {
-    const weekId = weekIdByNumber.get(w);
-    if (!weekId) continue;
-    if (w >= totalWeeks - f1Weeks + 1) {
-      await insertKill(weekId, floorIdByNumber.get(1));
+    // Gather which floors had at least one recipient this week →
+    // boss_kill rows. Note that the algorithm-untracked floor 4
+    // still gets a kill row when a weapon was distributed; the
+    // `tracked_for_algorithm` flag is on the floor, not on the kill,
+    // so this stays consistent.
+    const killedFloors = new Set<number>();
+    for (let pos = 0; pos < recipients.length; pos += 1) {
+      const cell = recipients[pos];
+      const map = POSITION_TO_ITEM[pos];
+      if (!cell || !map) continue;
+      killedFloors.add(map.floor);
     }
-    if (w >= totalWeeks - f2Weeks + 1) {
-      await insertKill(weekId, floorIdByNumber.get(2));
+    for (const floorNumber of killedFloors) {
+      const floorId = floorIdByNumber.get(floorNumber);
+      if (floorId === undefined) continue;
+      await client.execute({
+        sql: `INSERT INTO boss_kill (raid_week_id, floor_id, cleared_at)
+              VALUES (?, ?, unixepoch())`,
+        args: [weekId, floorId],
+      });
+      totalKills += 1;
     }
-    if (w >= totalWeeks - f3Weeks + 1) {
-      await insertKill(weekId, floorIdByNumber.get(3));
+
+    // Insert one loot_drop per filled cell with a known mapping.
+    for (let pos = 0; pos < recipients.length; pos += 1) {
+      const cell = recipients[pos];
+      const map = POSITION_TO_ITEM[pos];
+      if (!cell || !map) continue;
+      const floorId = floorIdByNumber.get(map.floor);
+      if (floorId === undefined) continue;
+
+      const recipientId =
+        cell === "(Other)" ? null : (playerIdByName.get(cell) ?? null);
+      if (cell !== "(Other)" && recipientId === null) {
+        console.warn(
+          `[import] week ${weekNumber} pos ${pos} (${map.itemKey}): unknown player "${cell}"`,
+        );
+      }
+
+      await client.execute({
+        sql: `INSERT INTO loot_drop
+                (raid_week_id, floor_id, item_key, recipient_id,
+                 paid_with_pages, picked_by_algorithm, score_snapshot,
+                 notes, awarded_at)
+              VALUES (?, ?, ?, ?, 0, 0, NULL, NULL, unixepoch())`,
+        args: [weekId, floorId, map.itemKey, recipientId],
+      });
+      totalDrops += 1;
     }
   }
-  console.log(`[import] ${totalWeeks} raid weeks + boss kills upserted`);
+  console.log(
+    `[import] ${LOOT_HISTORY.length} weeks · ${totalKills} kills · ${totalDrops} drops`,
+  );
 
   console.log("[import] done.");
-}
-
-async function insertKill(
-  raidWeekId: number,
-  floorId: number | undefined,
-): Promise<void> {
-  if (floorId === undefined) return;
-  await client.execute({
-    sql: `INSERT INTO boss_kill (raid_week_id, floor_id, cleared_at)
-          VALUES (?, ?, unixepoch())
-          ON CONFLICT(raid_week_id, floor_id) DO NOTHING`,
-    args: [raidWeekId, floorId],
-  });
 }
 
 main()
