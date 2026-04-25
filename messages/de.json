@@ -1,0 +1,14 @@
+{
+  "app": {
+    "title": "Smelly Loot",
+    "subtitle": "Selbst gehostete Loot-Verteilung für FF XIV Savage-Raid-Statics.",
+    "phaseNote": "Phase-0-Gerüst — der Bauplan liegt in {file}."
+  },
+  "locale": {
+    "label": "Sprache",
+    "names": {
+      "en": "Englisch",
+      "de": "Deutsch"
+    }
+  }
+}

@@ -6,5 +6,5 @@
  * (e.g. splitting the schema into multiple files) stays a no-op for
  * consumers.
  */
-export { db, type Database } from "./client";
+export { type Database, db } from "./client";
 export * as schema from "./schema";
