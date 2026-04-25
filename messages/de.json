@@ -143,6 +143,35 @@
       "perFloor": "Pro Floor"
     }
   },
+  "history": {
+    "title": "Loot-Historie",
+    "description": "Alle erfassten Drops, gruppiert nach Woche.",
+    "empty": "Noch keine Drops erfasst.",
+    "weekLabel": "Woche {number}",
+    "weekStarted": "Gestartet {date}",
+    "floorLabel": "Floor {number}",
+    "noDrops": "Keine Drops für diese Woche erfasst.",
+    "viaPages": "via Pages",
+    "manualOverride": "manueller Override",
+    "unassigned": "—"
+  },
+  "tierEdit": {
+    "title": "Tier-Konfiguration",
+    "description": "Lege Tier-Name und Max-iLv fest. Die neun Quellen-iLvs werden automatisch aus dem Max abgeleitet (Standard-FFXIV-Deltas: Savage = max, JustNo = max − 40).",
+    "name": {
+      "label": "Tier-Name",
+      "placeholder": "z.B. Arcadion Heavyweight Savage"
+    },
+    "maxIlv": {
+      "label": "Max iLv",
+      "help": "Höchstes Item-Level dieser Tier — meist das upgegradete Savage-Piece."
+    },
+    "preview": "Vorschau",
+    "ilvLabel": "{source}",
+    "save": "Speichern",
+    "savedToast": "Tier-Konfiguration gespeichert.",
+    "saveErrorToast": "Speichern fehlgeschlagen."
+  },
   "bis": {
     "title": "Best in Slot",
     "description": "Pro Slot. Änderungen werden automatisch gespeichert.",
