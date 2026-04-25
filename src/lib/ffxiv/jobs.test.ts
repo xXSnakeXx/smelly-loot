@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  GEAR_ROLES,
-  JOB_CODES,
-  ROLE_WEIGHTS,
-  jobToGearRole,
-} from "./jobs";
+import { GEAR_ROLES, JOB_CODES, jobToGearRole, ROLE_WEIGHTS } from "./jobs";
 
 describe("jobToGearRole", () => {
   it("classifies the four tank jobs as `tank`", () => {

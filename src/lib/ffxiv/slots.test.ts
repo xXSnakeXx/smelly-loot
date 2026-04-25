@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   BIS_SOURCES,
   DEFAULT_ILV_DELTAS,
+  deriveSourceIlvs,
   ITEM_KEYS,
   SLOTS,
-  deriveSourceIlvs,
 } from "./slots";
 
 describe("SLOTS", () => {
@@ -85,7 +85,9 @@ describe("DEFAULT_ILV_DELTAS", () => {
   });
 
   it("monotonically decreases through the spreadsheet's legend order", () => {
-    expect(DEFAULT_ILV_DELTAS.Savage).toBeGreaterThan(DEFAULT_ILV_DELTAS.TomeUp);
+    expect(DEFAULT_ILV_DELTAS.Savage).toBeGreaterThan(
+      DEFAULT_ILV_DELTAS.TomeUp,
+    );
     expect(DEFAULT_ILV_DELTAS.TomeUp).toBeGreaterThan(
       DEFAULT_ILV_DELTAS.Catchup,
     );
