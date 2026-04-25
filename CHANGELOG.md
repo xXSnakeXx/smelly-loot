@@ -7,6 +7,61 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-04-25
+
+A presentation pass. Phase 1's algorithm and data model don't change —
+this release adds a forward-looking *Plan* tab to the loot page, gives
+the per-player view a hero card and a spreadsheet-style colour-coded
+BiS table, and makes the Materials card actionable.
+
+### Added
+
+#### Loot timeline / planning
+- `/loot` is now a two-tab page (Plan / Track) backed by Base UI
+  Tabs:
+  - **Plan** is the forward-looking simulator. For each upcoming
+    week (default 8) it walks through every floor's drops and assigns
+    each one to the algorithm's top pick, applying the same
+    `effective_need` math the live recommendation uses. The result is
+    rendered as a Week × Item grid per floor so the team can read off
+    a projected loot timeline at a glance.
+  - **Track** is the existing kill-toggle + drop-card workflow,
+    untouched. As real drops are recorded the snapshots update, so
+    the Plan recomputes automatically on the next request.
+- `src/lib/loot/timeline.ts` — pure `simulateLootTimeline()` over the
+  same `PlayerSnapshot` / `TierSnapshot` shapes the live algorithm
+  consumes, so the simulator stays bug-for-bug aligned with reality.
+  Six fixture-driven Vitest cases lock in the contract (page costs
+  spent, role-weighted ties, untracked floors blanked, deterministic
+  hash tiebreaker).
+
+#### Player detail redesign
+- Hero card on `/players/[id]`: large player name, role-coloured
+  job chip (Tank=sky / Healer=emerald / Melee=rose / Phys-Ranged=
+  amber / Caster=violet), alt-jobs line, gear-set link with an
+  external-link icon, and a BiS progress bar showing the share of
+  desired-source slots already at BiS.
+- Materials card refresh: now shows *Received* and *Needed* side-by-
+  side. The needed counts are derived from the BiS plan
+  (`desiredSource === "TomeUp"` per slot category, mapped Glaze →
+  Head/Gloves/Boots, Twine → Chestpiece/Pants, Ester → accessories);
+  fully-funded materials get a subtle emerald tint.
+- Savage-drops counter promoted to its own compact card so the
+  fairness factor is legible at a glance.
+
+#### BiS-table colour legend
+- `src/lib/ffxiv/bis-status.ts` — pure `computeBisTone()` returning
+  one of seven tones that mirror the spreadsheet legend
+  (purple = BiS achieved, amber = needs upgrade token,
+  sky = near max, emerald = intermediate, slate = behind,
+  rose = significant gap, neutral = NotPlanned). Each row picks up
+  a 4-px coloured accent stripe + tinted background so the gear
+  status is legible at a glance even from the back of the room.
+
+### Tests
+42 unit tests (3 utils + 11 jobs + 10 slots + 12 algorithm + 6
+timeline).
+
 ## [1.0.0] - 2026-04-25
 
 The MVP. Phase 1 of the [roadmap](./ROADMAP.md) is complete: the app
