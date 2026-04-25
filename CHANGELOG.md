@@ -7,13 +7,77 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Pending for v1.0.0
-- Loot distribution UI: weeks, boss kills, per-drop recommendations, accept/override flow
-- Material tally (Glaze / Twine / Ester counters with page-aware effective need)
-- Pages counter (auto-derived spent / current / needed per floor with page_adjust)
-- History views (per-player gear timeline + per-week loot grid)
-- Tier-edit form
-- DE/EN translation parity sweep + dark-mode polish
+## [1.0.0] - 2026-04-25
+
+The MVP. Phase 1 of the [roadmap](./ROADMAP.md) is complete: the app
+replaces the Mannschaft-Smelly spreadsheet end-to-end, with live
+recommendations driven by the page-aware scoring engine.
+
+### Added
+
+#### Loot distribution
+- `/loot` page lands the active raid-week. Empty state offers a
+  "Start first raid week" CTA; once weeks exist, the page renders one
+  card per floor with a Mark-as-cleared toggle and a 2-column drop
+  grid below.
+- DropCard handles three render branches — *awarded* (shows recipient
+  + Undo), *eligible recipients* (Top-1 recommendation per Topic 6,
+  with an Other-player override dialog listing every player sorted by
+  algorithm score), and *no eligible recipient* (manual override
+  only). The score snapshot at decision time is persisted on the
+  `loot_drop` row so historical recommendations stay reproducible.
+- Server Actions: `createRaidWeek`, `recordBossKill`, `undoBossKill`,
+  `awardLootDrop`, `undoLootDrop` — all Zod-validated, idempotent on
+  re-submit, and revalidating every consuming route.
+
+#### Per-player stats
+- `/players/[id]` gains a Pages & Materials section above the BiS
+  tracker. The page-balance table is auto-derived
+  (`kills + page_adjust − tokens_spent` per floor); the Adjust column
+  is the single editable seam in the entire page-accounting layer
+  (Topic 2 decision).
+- Materials card shows Glaze / Twine / Ester counts received this
+  tier; the bottom of the card surfaces the Savage-drop count that
+  drives the algorithm's fairness factor.
+
+#### Loot history
+- `/history` page reads every recorded drop, groups them by week, and
+  renders one card per week. Drops show the recipient with optional
+  "via pages" / "manual override" badges that mirror the
+  spreadsheet's annotations.
+
+#### Tier configuration
+- `/tier` page exposes the active tier behind a tiny edit form: name
+  + max iLv. The nine per-source iLvs cascade via
+  `deriveSourceIlvs` (the same formula the seed uses). A preview
+  list shows what saving would produce. Per-source overrides and
+  editable buy costs are on the v1.1 wishlist.
+
+#### Plumbing
+- `src/lib/loot/snapshots.ts` — DB → algorithm-input adapter. Eight
+  small queries, no mega-CTE, ~100ms tail latency on a typical
+  `data/loot.db`.
+- `src/lib/db/queries-stats.ts` — per-player tier-scoped balances
+  used by the player detail page.
+- `src/lib/stats/actions.ts` — page-adjust upsert.
+- `src/lib/tiers/actions.ts` — tier-edit upsert with iLv cascade.
+- DE / EN translations land for every new page + Server Action toast.
+
+### Changed
+- Dark-mode palette nudged from neutral grey to deep slate-blue
+  (visibly tinted; lightness ~0.205, chroma ~0.030, hue 248) per
+  user feedback after testing v0.1.0.
+- Docker host port is configurable via `HOST_PORT` in `.env`; default
+  remains 3000.
+- Healthcheck targets `127.0.0.1:3000/en` instead of `localhost:3000/`
+  so it survives the `::1` resolution mismatch and the 307 redirect
+  on `/`.
+
+### Pending for v1.1
+- Per-source iLv overrides and editable `tier_buy_cost` rows.
+- Discord / Markdown export of weekly distribution.
+- xivgear.app link parser (auto-import BiS plans).
+- Cmd+K command palette for raid-leader power-user shortcuts.
 
 ## [0.1.0] - 2026-04-25
 
