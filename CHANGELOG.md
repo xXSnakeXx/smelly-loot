@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-04-25
+
+A small data-correctness pass.
+
+### Changed
+
+- **Heavyweight `max_ilv` corrected from 795 to 790.** General
+  Savage gear caps at 790 — only the floor-4 weapon goes to 795,
+  and floor 4 is `tracked_for_algorithm = false` so the algorithm
+  doesn't compete on weapon drops anyway. Every per-source iLv
+  cascades off 790 (TomeUp = 785, Catchup = 780, Tome = 775, ...).
+  The seed default is updated; the active tier in existing
+  deployments has been migrated separately via SQL.
+
+### Added
+
+- **`scripts/import-tier-data.ts`** — idempotent re-runnable script
+  that reproduces Mannschaft Smelly's spreadsheet snapshot:
+  - Player metadata: alt jobs, gear-set links, notes.
+  - Full BiS plan per player (12 slots × desired/current/marker).
+  - Page balances reproduced via per-(player, tier, floor)
+    `page_adjust` rows so the displayed balance matches the
+    spreadsheet exactly without back-filling synthetic loot drops.
+  - 9 raid weeks + boss kills with the team-clears schedule
+    (F1=9, F2=8, F3=6).
+- `pnpm import:tier` npm script.
+
 ## [1.2.0] - 2026-04-25
 
 A UI/UX pass to centralise the app around the dashboard. Inspired by
