@@ -111,6 +111,58 @@
       "melee": "Nahkampf-DPS",
       "phys_range": "Fernkampf-DPS",
       "caster": "Caster-DPS"
+    },
+    "detail": {
+      "back": "Zurück zu den Spielern",
+      "noBis": "Noch kein BiS-Plan — wähle unten pro Slot die gewünschte Quelle, um anzufangen.",
+      "gearLink": "Gear-Set-Link"
     }
+  },
+  "bis": {
+    "title": "Best in Slot",
+    "description": "Pro Slot. Änderungen werden automatisch gespeichert.",
+    "table": {
+      "slot": "Slot",
+      "desired": "Gewünscht",
+      "current": "Aktuell",
+      "marker": "Marker",
+      "received": "Erhalten am"
+    },
+    "slots": {
+      "Weapon": "Waffe",
+      "Offhand": "Off-Hand",
+      "Head": "Kopf",
+      "Chestpiece": "Brust",
+      "Gloves": "Hände",
+      "Pants": "Hose",
+      "Boots": "Schuhe",
+      "Earring": "Ohrring",
+      "Necklace": "Halskette",
+      "Bracelet": "Armreif",
+      "Ring1": "Ring 1",
+      "Ring2": "Ring 2"
+    },
+    "sources": {
+      "Savage": "Savage",
+      "TomeUp": "Tome Up",
+      "Catchup": "Catchup",
+      "Tome": "Tome",
+      "Extreme": "Extreme",
+      "Relic": "Relic",
+      "Crafted": "Crafted",
+      "WHYYYY": "WHYYYY",
+      "JustNo": "Just no.",
+      "NotPlanned": "—"
+    },
+    "markers": {
+      "none": "—",
+      "pages": "📃 Mit Pages bezahlt",
+      "craft": "🔨 Wird gecraftet",
+      "nextUpgrade": "◀️ Nächstes Upgrade",
+      "saveToken": "💾 Token sparen",
+      "tomes": "💰 Über Tomes/Sonstiges"
+    },
+    "savedToast": "BiS-Eintrag gespeichert.",
+    "saveErrorToast": "Speichern fehlgeschlagen — bitte erneut versuchen."
   }
 }

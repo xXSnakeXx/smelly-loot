@@ -102,3 +102,60 @@ export function deriveSourceIlvs(maxIlv: number): Record<BisSource, number> {
   }
   return result;
 }
+
+/**
+ * Tiny shape the BiS tracker uses to look up a source's iLv on the
+ * active tier. Mirrors the columns on the `tier` table; storing
+ * verbose camelCase names per source instead of an array keeps the
+ * lookup type-safe at compile time.
+ */
+export interface SourceIlvLookup {
+  ilvSavage: number;
+  ilvTomeUp: number;
+  ilvCatchup: number;
+  ilvTome: number;
+  ilvExtreme: number;
+  ilvRelic: number;
+  ilvCrafted: number;
+  ilvWhyyyy: number;
+  ilvJustNo: number;
+  /**
+   * `max_ilv` is duplicated here so callers can show the headline
+   * number without a separate prop. The tier always carries it.
+   */
+  maxIlv: number;
+}
+
+/**
+ * Look up the iLv for a given source on a tier-shaped object.
+ *
+ * Returns `null` for `NotPlanned` (the sentinel source) so the caller
+ * can render an em dash instead of a misleading number.
+ */
+export function ilvForSource(
+  tier: SourceIlvLookup,
+  source: BisSource,
+): number | null {
+  switch (source) {
+    case "Savage":
+      return tier.ilvSavage;
+    case "TomeUp":
+      return tier.ilvTomeUp;
+    case "Catchup":
+      return tier.ilvCatchup;
+    case "Tome":
+      return tier.ilvTome;
+    case "Extreme":
+      return tier.ilvExtreme;
+    case "Relic":
+      return tier.ilvRelic;
+    case "Crafted":
+      return tier.ilvCrafted;
+    case "WHYYYY":
+      return tier.ilvWhyyyy;
+    case "JustNo":
+      return tier.ilvJustNo;
+    case "NotPlanned":
+      return null;
+  }
+}
