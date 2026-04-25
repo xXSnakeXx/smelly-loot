@@ -1,14 +1,116 @@
 {
   "app": {
     "title": "Smelly Loot",
-    "subtitle": "Self-hosted loot distribution for FF XIV savage raid statics.",
-    "phaseNote": "Phase 0 scaffold — see {file} for the build plan."
+    "subtitle": "Self-hosted loot distribution for FF XIV savage raid statics."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "players": "Players",
+    "tier": "Tier",
+    "loot": "Loot",
+    "history": "History"
+  },
+  "theme": {
+    "toggle": "Toggle theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "Follow system"
   },
   "locale": {
     "label": "Language",
     "names": {
       "en": "English",
       "de": "German"
+    }
+  },
+  "dashboard": {
+    "welcome": "Welcome back",
+    "team": "Team",
+    "activeTier": "Active tier",
+    "maxIlv": "Max iLv",
+    "weekNumber": "Week",
+    "noWeeks": "No raid weeks recorded yet.",
+    "quickActions": {
+      "title": "Quick actions",
+      "newWeek": "Start new raid week",
+      "addPlayer": "Add player",
+      "editTier": "Edit tier",
+      "manageTeam": "Manage team"
+    }
+  },
+  "team": {
+    "settings": {
+      "title": "Team settings",
+      "description": "Rename the static or change the default UI language.",
+      "name": {
+        "label": "Team name",
+        "placeholder": "e.g. Mannschaft Smelly"
+      },
+      "locale": {
+        "label": "Default language",
+        "description": "Used for new sessions until the user picks one."
+      },
+      "save": "Save",
+      "savedToast": "Team settings saved."
+    }
+  },
+  "players": {
+    "title": "Players",
+    "description": "Manage who's on the static and what they main.",
+    "empty": {
+      "title": "No players yet.",
+      "description": "Add the eight raiders to start tracking gear and loot.",
+      "cta": "Add the first player"
+    },
+    "addCta": "Add player",
+    "table": {
+      "name": "Name",
+      "job": "Main job",
+      "altJobs": "Alt jobs",
+      "gearLink": "Gear link",
+      "actions": "Actions"
+    },
+    "form": {
+      "addTitle": "Add player",
+      "editTitle": "Edit player",
+      "name": {
+        "label": "Name",
+        "placeholder": "Character name"
+      },
+      "mainJob": "Main job",
+      "altJobs": {
+        "label": "Alt jobs",
+        "placeholder": "Optional secondary jobs",
+        "help": "Comma-separated list, e.g. AST,SCH"
+      },
+      "gearLink": {
+        "label": "Gear link",
+        "placeholder": "https://xivgear.app/?page=…"
+      },
+      "notes": {
+        "label": "Notes",
+        "placeholder": "Optional"
+      },
+      "submit": "Save",
+      "cancel": "Cancel"
+    },
+    "delete": {
+      "title": "Remove player?",
+      "description": "This deletes their BiS plan and unlinks any past loot drops they received. The drops themselves stay on record.",
+      "confirm": "Remove",
+      "cancel": "Cancel"
+    },
+    "toasts": {
+      "created": "Player added.",
+      "updated": "Player updated.",
+      "deleted": "Player removed."
+    },
+    "roles": {
+      "tank": "Tank",
+      "healer": "Healer",
+      "melee": "Melee DPS",
+      "phys_range": "Phys-Ranged DPS",
+      "caster": "Caster DPS"
     }
   }
 }

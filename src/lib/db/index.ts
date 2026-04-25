@@ -7,5 +7,5 @@
  * consumers.
  */
 export { type Database, db } from "./client";
-export { ensureSeedData } from "./seed";
 export * as schema from "./schema";
+export { ensureSeedData } from "./seed";

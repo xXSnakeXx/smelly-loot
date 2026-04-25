@@ -5,6 +5,7 @@ import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { Providers } from "@/components/providers";
+import { SiteHeader } from "@/components/site-header";
 import { routing } from "@/i18n/routing";
 
 import "../globals.css";
@@ -83,7 +84,10 @@ export default async function LocaleLayout({
     >
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>
-          <Providers>{children}</Providers>
+          <Providers>
+            <SiteHeader />
+            {children}
+          </Providers>
         </NextIntlClientProvider>
       </body>
     </html>

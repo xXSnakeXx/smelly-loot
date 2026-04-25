@@ -1,14 +1,116 @@
 {
   "app": {
     "title": "Smelly Loot",
-    "subtitle": "Selbst gehostete Loot-Verteilung für FF XIV Savage-Raid-Statics.",
-    "phaseNote": "Phase-0-Gerüst — der Bauplan liegt in {file}."
+    "subtitle": "Selbst gehostete Loot-Verteilung für FF XIV Savage-Raid-Statics."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "players": "Spieler",
+    "tier": "Tier",
+    "loot": "Loot",
+    "history": "Historie"
+  },
+  "theme": {
+    "toggle": "Design wechseln",
+    "light": "Hell",
+    "dark": "Dunkel",
+    "system": "System folgen"
   },
   "locale": {
     "label": "Sprache",
     "names": {
       "en": "Englisch",
       "de": "Deutsch"
+    }
+  },
+  "dashboard": {
+    "welcome": "Willkommen zurück",
+    "team": "Team",
+    "activeTier": "Aktiver Tier",
+    "maxIlv": "Max iLv",
+    "weekNumber": "Woche",
+    "noWeeks": "Noch keine Raid-Wochen erfasst.",
+    "quickActions": {
+      "title": "Schnellaktionen",
+      "newWeek": "Neue Raid-Woche starten",
+      "addPlayer": "Spieler hinzufügen",
+      "editTier": "Tier bearbeiten",
+      "manageTeam": "Team verwalten"
+    }
+  },
+  "team": {
+    "settings": {
+      "title": "Team-Einstellungen",
+      "description": "Benenne den Static um oder ändere die Standardsprache der UI.",
+      "name": {
+        "label": "Team-Name",
+        "placeholder": "z.B. Mannschaft Smelly"
+      },
+      "locale": {
+        "label": "Standardsprache",
+        "description": "Wird für neue Sessions verwendet, bis der Nutzer selbst auswählt."
+      },
+      "save": "Speichern",
+      "savedToast": "Team-Einstellungen gespeichert."
+    }
+  },
+  "players": {
+    "title": "Spieler",
+    "description": "Verwalte, wer im Static spielt und was sie als Main fahren.",
+    "empty": {
+      "title": "Noch keine Spieler.",
+      "description": "Lege die acht Raider an, um Gear und Loot zu tracken.",
+      "cta": "Ersten Spieler anlegen"
+    },
+    "addCta": "Spieler anlegen",
+    "table": {
+      "name": "Name",
+      "job": "Main-Job",
+      "altJobs": "Alt-Jobs",
+      "gearLink": "Gear-Link",
+      "actions": "Aktionen"
+    },
+    "form": {
+      "addTitle": "Spieler anlegen",
+      "editTitle": "Spieler bearbeiten",
+      "name": {
+        "label": "Name",
+        "placeholder": "Charaktername"
+      },
+      "mainJob": "Main-Job",
+      "altJobs": {
+        "label": "Alt-Jobs",
+        "placeholder": "Optionale Zweit-Jobs",
+        "help": "Komma-getrennt, z.B. AST,SCH"
+      },
+      "gearLink": {
+        "label": "Gear-Link",
+        "placeholder": "https://xivgear.app/?page=…"
+      },
+      "notes": {
+        "label": "Notizen",
+        "placeholder": "Optional"
+      },
+      "submit": "Speichern",
+      "cancel": "Abbrechen"
+    },
+    "delete": {
+      "title": "Spieler entfernen?",
+      "description": "Damit wird der BiS-Plan gelöscht und vergangene Loot-Drops, die der Spieler bekam, werden entkoppelt. Die Drops selbst bleiben in der Historie.",
+      "confirm": "Entfernen",
+      "cancel": "Abbrechen"
+    },
+    "toasts": {
+      "created": "Spieler angelegt.",
+      "updated": "Spieler aktualisiert.",
+      "deleted": "Spieler entfernt."
+    },
+    "roles": {
+      "tank": "Tank",
+      "healer": "Healer",
+      "melee": "Nahkampf-DPS",
+      "phys_range": "Fernkampf-DPS",
+      "caster": "Caster-DPS"
     }
   }
 }
