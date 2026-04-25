@@ -1,0 +1,55 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/install-state.gz
+
+# Testing
+/coverage
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache
+
+# Next.js
+/.next/
+/out/
+*.tsbuildinfo
+next-env.d.ts.bak
+
+# Production builds
+/build
+/dist
+
+# Database (SQLite, libSQL)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.sqlite
+*.sqlite-journal
+
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+logs/
+
+# Editor / OS
+.DS_Store
+*.pem
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Tooling caches
+.turbo/
+.vercel/
+.cache/
