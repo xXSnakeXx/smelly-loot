@@ -27,7 +27,7 @@ import { floor, team, tier, tierBuyCost } from "./schema";
  * server boot.
  */
 
-const DEFAULT_TEAM_NAME = "My Static";
+const DEFAULT_TEAM_NAME = "Mannschaft Smelly";
 const DEFAULT_TEAM_LOCALE = "en";
 
 const HEAVYWEIGHT_TIER_NAME = "Arcadion Heavyweight Savage";
