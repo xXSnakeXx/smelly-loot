@@ -24,6 +24,7 @@ import {
 import { saveBisChoice } from "@/lib/bis/actions";
 import { BIS_MARKERS, type BisMarker } from "@/lib/bis/schemas";
 import type { BisChoice, Player, Tier } from "@/lib/db/schema";
+import { bisToneClasses, computeBisTone } from "@/lib/ffxiv/bis-status";
 import {
   BIS_SOURCES,
   type BisSource,
@@ -62,13 +63,14 @@ const MARKER_TRANSLATION_KEY: Record<BisMarker, string> = {
  * upserts the corresponding `bis_choice` row. There's no Save button —
  * dropdown changes commit immediately, which matches the spreadsheet's
  * reflexes. A short toast confirms each save; failures surface a
- * different toast and the optimistic row state is rolled back.
+ * different toast.
  *
- * The row colour signals BiS progress at a glance:
- * - emerald: current matches desired (BiS achieved)
- * - amber:  current iLv lower than desired iLv (upgrade pending)
- * - rose:   current iLv significantly lower (≥10 iLv gap)
- * - neutral: NotPlanned on either side
+ * Row colour mirrors the spreadsheet's status legend exactly via
+ * `computeBisTone`: purple = BiS achieved, amber = needs upgrade
+ * token, sky = near max, emerald = intermediate, slate = behind,
+ * rose = significant gap, neutral = NotPlanned. Each row also carries
+ * a 4px coloured accent stripe on the leading edge to make the state
+ * legible at a glance even on muted backgrounds.
  */
 export function BisTable({ player, tier, initialChoices }: BisTableProps) {
   const t = useTranslations("bis");
@@ -78,8 +80,6 @@ export function BisTable({ player, tier, initialChoices }: BisTableProps) {
   const locale = useLocale();
   const dateLocale = locale === "de" ? deLocale : enLocale;
 
-  // Hydrate initial state from the database. Slots without a row
-  // default to NotPlanned on both sides.
   const initialBySlot = new Map<Slot, BisChoice>(
     initialChoices.map((row) => [row.slot as Slot, row]),
   );
@@ -108,24 +108,8 @@ export function BisTable({ player, tier, initialChoices }: BisTableProps) {
         currentSource: next.currentSource,
         marker: next.marker || undefined,
       });
-      if (result.ok) {
-        toast.success(t("savedToast"));
-      } else {
-        toast.error(t("saveErrorToast"));
-        // Roll the row back on failure so the UI matches the DB.
-        setRows((current) => ({
-          ...current,
-          [slot]: {
-            ...current[slot],
-            // If validation failed, the source columns are the most
-            // likely culprits; revert them to the previous values
-            // by reading from the existing state. The simplest
-            // implementation is "do nothing" — the next render keeps
-            // showing the user's input, which is fine for a
-            // validation error since it's recoverable.
-          },
-        }));
-      }
+      if (result.ok) toast.success(t("savedToast"));
+      else toast.error(t("saveErrorToast"));
     });
   };
 
@@ -141,7 +125,7 @@ export function BisTable({ player, tier, initialChoices }: BisTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[140px]">{t("table.slot")}</TableHead>
+          <TableHead className="w-[180px]">{t("table.slot")}</TableHead>
           <TableHead>{t("table.desired")}</TableHead>
           <TableHead>{t("table.current")}</TableHead>
           <TableHead className="w-[180px]">{t("table.marker")}</TableHead>
@@ -151,13 +135,26 @@ export function BisTable({ player, tier, initialChoices }: BisTableProps) {
       <TableBody>
         {SLOTS.map((slot) => {
           const row = rows[slot];
+          const tone = computeBisTone(
+            row.desiredSource,
+            row.currentSource,
+            tier,
+          );
+          const toneClasses = bisToneClasses(tone);
           const desiredIlv = ilvForSource(tier, row.desiredSource);
           const currentIlv = ilvForSource(tier, row.currentSource);
-          const tone = computeTone(desiredIlv, currentIlv);
 
           return (
-            <TableRow key={slot} className={cn(toneClasses(tone))}>
-              <TableCell className="font-medium">{tSlots(slot)}</TableCell>
+            <TableRow key={slot} className={cn(toneClasses.row)}>
+              <TableCell className="relative pl-4 font-medium">
+                <span
+                  className={cn(
+                    "absolute left-0 top-1.5 h-[calc(100%-12px)] w-1 rounded-r-sm",
+                    toneClasses.accent,
+                  )}
+                />
+                {tSlots(slot)}
+              </TableCell>
               <TableCell>
                 <SourceSelect
                   value={row.desiredSource}
@@ -166,6 +163,7 @@ export function BisTable({ player, tier, initialChoices }: BisTableProps) {
                   }
                   ilvFor={(source) => ilvForSource(tier, source)}
                   labelFor={(source) => tSources(source)}
+                  trailingIlv={desiredIlv}
                 />
               </TableCell>
               <TableCell>
@@ -176,6 +174,7 @@ export function BisTable({ player, tier, initialChoices }: BisTableProps) {
                   }
                   ilvFor={(source) => ilvForSource(tier, source)}
                   labelFor={(source) => tSources(source)}
+                  trailingIlv={currentIlv}
                 />
               </TableCell>
               <TableCell>
@@ -214,19 +213,24 @@ export function BisTable({ player, tier, initialChoices }: BisTableProps) {
 }
 
 /**
- * Reusable source dropdown with the iLv inline. Used for both
- * desired and current columns.
+ * Reusable source dropdown with the iLv inline.
+ *
+ * The selected value renders the iLv after the source name (e.g.
+ * "Savage 795") so the operator sees the resulting iLv inline
+ * without expanding the dropdown.
  */
 function SourceSelect({
   value,
   onChange,
   ilvFor,
   labelFor,
+  trailingIlv,
 }: {
   value: BisSource;
   onChange: (next: BisSource) => void;
   ilvFor: (source: BisSource) => number | null;
   labelFor: (source: BisSource) => string;
+  trailingIlv: number | null;
 }) {
   return (
     <Select
@@ -236,7 +240,14 @@ function SourceSelect({
       }}
     >
       <SelectTrigger className="w-full" size="sm">
-        <SelectValue />
+        <span className="flex w-full items-center justify-between gap-2">
+          <SelectValue />
+          {trailingIlv !== null ? (
+            <span className="font-mono text-xs text-muted-foreground">
+              {trailingIlv}
+            </span>
+          ) : null}
+        </span>
       </SelectTrigger>
       <SelectContent>
         {BIS_SOURCES.map((source) => {
@@ -258,29 +269,4 @@ function SourceSelect({
       </SelectContent>
     </Select>
   );
-}
-
-type Tone = "match" | "upgrade" | "behind" | "neutral";
-
-function computeTone(
-  desiredIlv: number | null,
-  currentIlv: number | null,
-): Tone {
-  if (desiredIlv === null || currentIlv === null) return "neutral";
-  if (currentIlv >= desiredIlv) return "match";
-  if (desiredIlv - currentIlv >= 10) return "behind";
-  return "upgrade";
-}
-
-function toneClasses(tone: Tone): string {
-  switch (tone) {
-    case "match":
-      return "bg-emerald-50/40 dark:bg-emerald-950/20";
-    case "upgrade":
-      return "bg-amber-50/40 dark:bg-amber-950/20";
-    case "behind":
-      return "bg-rose-50/40 dark:bg-rose-950/20";
-    case "neutral":
-      return "";
-  }
 }
