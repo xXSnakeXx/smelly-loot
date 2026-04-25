@@ -133,14 +133,22 @@
     },
     "materials": {
       "title": "Materialien",
-      "description": "Upgrade-Tokens — als Drop erhalten oder per Pages gekauft.",
-      "received": "Erhalten"
+      "description": "Upgrade-Tokens — erhalten vs. benötigt für den BiS-Plan.",
+      "received": "Erhalten",
+      "needed": "Benötigt",
+      "remaining": "Restlich"
     },
     "savage": {
       "title": "Savage-Drops",
       "description": "Gear-Drops dieser Tier (ohne Materialien und Token-Käufe).",
       "totalLabel": "Diese Tier",
       "perFloor": "Pro Floor"
+    },
+    "hero": {
+      "bisProgress": "BiS-Fortschritt",
+      "bisProgressValue": "{achieved} von {planned} Slots",
+      "altJobs": "Alt-Jobs",
+      "gearLink": "Gearset-Link"
     }
   },
   "history": {
@@ -221,7 +229,20 @@
   },
   "loot": {
     "title": "Loot-Verteilung",
-    "description": "Boss-Kills erfassen und Drops zuweisen; die Engine empfiehlt pro Item einen Empfänger.",
+    "description": "Plane zukünftige Wochen und tracke die aktuellen Drops.",
+    "tabs": {
+      "plan": "Plan",
+      "track": "Tracking"
+    },
+    "plan": {
+      "title": "Vorgeschlagene Timeline",
+      "description": "Empfohlene Verteilung für die nächsten {weeksAhead} Wochen pro Boss, berechnet aus aktuellen BiS-Plänen + Page-Beständen. Wird automatisch neu berechnet, sobald echte Drops im Tracking-Tab erfasst werden.",
+      "noPlayers": "Lege zuerst Spieler an, um eine Loot-Timeline zu planen.",
+      "untrackedFloor": "Manuelle Verteilung — kein Algorithmus",
+      "weekColumn": "Woche",
+      "noRecipient": "—",
+      "viaPagesHint": "Spieler hat genug Pages, um sich diesen Slot selbst zu kaufen."
+    },
     "noWeeks": {
       "title": "Noch keine Raid-Woche erfasst.",
       "description": "Starte die erste Raid-Woche, um Kills und Loot zu tracken.",

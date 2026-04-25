@@ -133,14 +133,22 @@
     },
     "materials": {
       "title": "Materials",
-      "description": "Upgrade tokens received as drops or token purchases.",
-      "received": "Received"
+      "description": "Upgrade tokens received vs needed for the BiS plan.",
+      "received": "Received",
+      "needed": "Needed",
+      "remaining": "Remaining"
     },
     "savage": {
       "title": "Savage drops",
       "description": "Gear drops awarded this tier (excludes materials and token purchases).",
       "totalLabel": "This tier",
       "perFloor": "Per floor"
+    },
+    "hero": {
+      "bisProgress": "BiS progress",
+      "bisProgressValue": "{achieved} of {planned} slots",
+      "altJobs": "Alt jobs",
+      "gearLink": "Gear-set link"
     }
   },
   "history": {
@@ -221,7 +229,20 @@
   },
   "loot": {
     "title": "Loot distribution",
-    "description": "Record boss kills and assign drops; the engine recommends a recipient per item.",
+    "description": "Plan future weeks and track this week's actual drops.",
+    "tabs": {
+      "plan": "Plan",
+      "track": "Track"
+    },
+    "plan": {
+      "title": "Suggested timeline",
+      "description": "Recommended distribution for the next {weeksAhead} weeks per boss, computed from current BiS plans + page balances. Recomputes automatically as real drops are recorded in the Track tab.",
+      "noPlayers": "Add players first to plan a loot timeline.",
+      "untrackedFloor": "Manual distribution — no algorithm",
+      "weekColumn": "Week",
+      "noRecipient": "—",
+      "viaPagesHint": "Player has enough pages to self-buy this slot."
+    },
     "noWeeks": {
       "title": "No raid weeks recorded yet.",
       "description": "Start the first raid week to begin tracking kills and loot.",
