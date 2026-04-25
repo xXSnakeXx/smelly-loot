@@ -4,6 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "@/i18n/navigation";
 import { getCurrentContext } from "@/lib/db/queries";
 
+// The dashboard reads live data from the database every request. Without
+// this directive Next.js 16 prerenders the page using the seed values
+// captured at build time, which would silently go stale the moment the
+// user renames the team or rolls a new tier.
+export const dynamic = "force-dynamic";
+
 /**
  * Dashboard landing page.
  *
