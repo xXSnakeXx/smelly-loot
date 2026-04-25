@@ -5,7 +5,11 @@ services:
     container_name: smelly-loot
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Host port is configurable via HOST_PORT in .env so the
+      # deployment can sit alongside other services without colliding
+      # with their port assignments. The container always listens on
+      # 3000.
+      - "${HOST_PORT:-3000}:3000"
     env_file:
       - .env
     volumes:
