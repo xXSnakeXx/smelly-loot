@@ -7,6 +7,85 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-04-26
+
+### Breaking changes
+
+- **Players are team-scoped again.** v1.4 made each tier own its
+  own copy of every raider; v2.0 walks that back. A raider's stable
+  identity (name, main job, alt jobs, gear-tracker URL, notes)
+  doesn't change between tiers and now lives in a single `player`
+  row keyed by `team_id`. Per-tier data — the BiS plan and the
+  loot history — moves to `bis_choice.tier_id`, with a new
+  `(player_id, tier_id, slot)` composite primary key.
+
+  Migration `0003_team_scoped_players_with_tier_bis` ports existing
+  rows: duplicate `(name, main_job)` players from previous tiers
+  collapse onto the youngest canonical id; the original
+  `bis_choice.tier_id` is back-filled from each player's
+  pre-migration `tier_id`; `loot_drop.recipient_id` and
+  `page_adjust.player_id` are remapped through the same dedup map
+  so historical loot stays attached to the canonical players.
+
+- **Tier membership is implicit.** A player IS in a tier iff at
+  least one `bis_choice` row exists for the (player, tier) pair —
+  there is no separate membership table. Adding a player to a tier
+  stamps the 12-slot Crafted-baseline default BiS plan; removing
+  them deletes those rows. Loot history they accrued in the tier
+  stays attached.
+
+### Added
+
+- **`/team` master-roster page.** Top-level Top-Nav entry next to
+  the brand. Lists every player on the team and lets you add /
+  edit / delete the stable-identity fields (name, jobs, gear-link,
+  notes) once instead of 8x per rollover. Adding a player here
+  does NOT auto-enrol them into any tier — that's now an explicit
+  per-tier action.
+
+- **Tier-detail Roster tab.** Replaces the v1.4 Players tab. Shows
+  the players currently in the tier (= those with `bis_choice`
+  rows for it), with per-row "remove from tier" and a top-right
+  "Add players" dialog that multi-selects from the team players
+  not yet in the tier. The add action stamps the Crafted-baseline
+  default BiS plan for each selection.
+
+- **`/team/settings`.** Team rename + default-locale form moves
+  from the (now-repurposed) `/team` route. The Settings cog in the
+  top-bar links here.
+
+- **Auto-roster on tier creation.** `createTierAction` now reads
+  the team-level player list and stamps the 12-slot
+  Crafted-baseline default BiS plan for every team player on the
+  new tier. The tier comes up with a complete roster from the
+  start; pruning happens via the Roster tab if a particular tier
+  won't include everyone.
+
+### Changed
+
+- **`createPlayerAction`** takes a `teamId` instead of a `tierId`.
+  Tier membership is granted explicitly via
+  `addPlayerToTierAction`.
+- **`saveBisChoice`** requires a `tierId` for the new composite
+  key; the upsert target is `(playerId, tierId, slot)`.
+- **`listBisChoicesForPlayer(playerId, tierId)`** filters by tier
+  so the BiS table on the player-detail page renders the active
+  tier's plan.
+- **`/players` and `/players/[id]`** redirect to `/team` and
+  `/team/[id]` respectively.
+- **Loot tabs** rename `Players` → `Roster` in DE + EN.
+
+### Removed
+
+- **`PlayersView`, `players/PlayersTable`** etc. on the tier-detail
+  page — replaced by `RosterView`, `RosterTable`,
+  `AddPlayersToTierDialog`. The CRUD components for stable identity
+  move under `/team/_components/`.
+- **Tier-rollover roster copy.** v1.4's
+  "copy the source tier's roster onto the new tier" branch is
+  gone; the new tier's roster derives from the team-level player
+  list directly.
+
 ## [1.5.0] - 2026-04-25
 
 ### Fixed
