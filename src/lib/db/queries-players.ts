@@ -1,7 +1,7 @@
 import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 
 import { db } from "./client";
-import { bisChoice, player } from "./schema";
+import { bisChoice, player, tier as tierTable } from "./schema";
 
 /**
  * Read-only helpers around the `player` table.
@@ -92,4 +92,39 @@ export async function countPlayersByTier(
     .where(eq(player.teamId, teamId))
     .groupBy(bisChoice.tierId);
   return new Map(rows.map((r) => [r.tierId, r.count]));
+}
+
+/**
+ * List the tiers a single player participates in — i.e. every tier
+ * for which there's at least one `bis_choice` row pinning the
+ * player to it. Used by the player-detail page on `/team/[id]` to
+ * render the per-tier "open this player's BiS plan in tier X"
+ * navigation list.
+ *
+ * The result joins through `tier` so callers get the full tier row
+ * (name, archived flag, etc.) without a second round-trip. Results
+ * are ordered with the active tier first and then archived tiers
+ * in reverse-creation order, mirroring the dashboard's tier-grid
+ * sort.
+ */
+export async function listTiersForPlayer(playerId: number) {
+  const tierIdsForPlayer = db
+    .select({ id: bisChoice.tierId })
+    .from(bisChoice)
+    .where(eq(bisChoice.playerId, playerId))
+    .groupBy(bisChoice.tierId);
+
+  const tiers = await db
+    .select()
+    .from(tierTable)
+    .where(inArray(tierTable.id, tierIdsForPlayer));
+
+  // Active tier first, then most-recently archived. Comparable to
+  // the dashboard sort so the navigation order is consistent.
+  return tiers.sort((a, b) => {
+    const archivedDelta =
+      Number(a.archivedAt !== null) - Number(b.archivedAt !== null);
+    if (archivedDelta !== 0) return archivedDelta;
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
 }
