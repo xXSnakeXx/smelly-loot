@@ -2,9 +2,9 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "./client";
 import {
+  bisChoice,
   bossKill,
   lootDrop,
-  player,
   raidWeek,
   tier as tierTable,
 } from "./schema";
@@ -99,14 +99,18 @@ export async function listTiersForTeam(
     .where(inArray(raidWeek.tierId, tierIds))
     .groupBy(raidWeek.tierId);
 
+  // Players-per-tier comes from `bis_choice` (v2.0): a player IS
+  // in a tier iff they have at least one `bis_choice` row for it.
+  // `count(distinct player_id)` collapses the 12-rows-per-player
+  // multiplier so the dashboard card shows "8 players", not "96".
   const playerRows = await db
     .select({
-      tierId: player.tierId,
-      count: sql<number>`count(*)`,
+      tierId: bisChoice.tierId,
+      count: sql<number>`count(distinct ${bisChoice.playerId})`,
     })
-    .from(player)
-    .where(inArray(player.tierId, tierIds))
-    .groupBy(player.tierId);
+    .from(bisChoice)
+    .where(inArray(bisChoice.tierId, tierIds))
+    .groupBy(bisChoice.tierId);
 
   const weekByTier = new Map(weekRows.map((r) => [r.tierId, r.count]));
   const killByTier = new Map(killRows.map((r) => [r.tierId, r.count]));

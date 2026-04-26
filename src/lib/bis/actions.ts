@@ -59,6 +59,7 @@ export async function saveBisChoice(
     .insert(bisChoice)
     .values({
       playerId: data.playerId,
+      tierId: data.tierId,
       slot: data.slot,
       desiredSource: data.desiredSource,
       currentSource: data.currentSource,
@@ -66,7 +67,7 @@ export async function saveBisChoice(
       receivedAt: wearsSomething ? new Date() : null,
     })
     .onConflictDoUpdate({
-      target: [bisChoice.playerId, bisChoice.slot],
+      target: [bisChoice.playerId, bisChoice.tierId, bisChoice.slot],
       set: {
         desiredSource: data.desiredSource,
         currentSource: data.currentSource,
@@ -81,6 +82,7 @@ export async function saveBisChoice(
       .where(
         and(
           eq(bisChoice.playerId, data.playerId),
+          eq(bisChoice.tierId, data.tierId),
           eq(bisChoice.slot, data.slot),
         ),
       );

@@ -5,8 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { bisChoice, player } from "@/lib/db/schema";
-import { defaultBisChoicesForJob } from "@/lib/ffxiv/bis-defaults";
+import { player } from "@/lib/db/schema";
 
 import {
   playerCreateSchema,
@@ -36,16 +35,23 @@ function fieldErrors(error: z.ZodError): Record<string, string> {
 }
 
 /**
- * Create a player in the given tier's roster.
+ * Create a player on the team's master roster.
  *
- * Sort order is set to `max(sort_order) + 1` *within the tier* so
- * newly added players land at the end of the table; the team-overview
- * page later exposes drag handles to reorder.
+ * Players are team-scoped (v2.0). Sort order is set to
+ * `max(sort_order) + 1` *within the team* so newly added players
+ * land at the end of the roster table; the team-overview page later
+ * exposes drag handles to reorder.
  *
- * The form must include a hidden `tierId` field so the action knows
- * which roster to attach the new player to. Players are tier-scoped
- * (v1.4) so each tier has its own list — Brad in Heavyweight is a
- * different DB row from Brad in Cruiserweight.
+ * The form must include a hidden `teamId` field so the action
+ * knows which team's roster to attach the new player to.
+ *
+ * Creating a player does NOT automatically add them to any tier.
+ * Tier membership is granted explicitly via the Roster tab on the
+ * tier-detail page (`addPlayerToTierAction`), which stamps the
+ * 12-slot Crafted-baseline BiS plan for that tier. This split
+ * keeps the team-page minimal (just stable identity) and lets the
+ * raid leader stage a new raider on the team without forcing them
+ * into every active tier.
  */
 export async function createPlayerAction(
   _previous: ActionState,
@@ -59,56 +65,31 @@ export async function createPlayerAction(
   const orderRow = await db
     .select({ nextOrder: max(player.sortOrder) })
     .from(player)
-    .where(eq(player.tierId, parsed.data.tierId));
+    .where(eq(player.teamId, parsed.data.teamId));
   const nextOrder = (orderRow[0]?.nextOrder ?? 0) + 1;
 
-  const inserted = await db
-    .insert(player)
-    .values({
-      tierId: parsed.data.tierId,
-      name: parsed.data.name,
-      mainJob: parsed.data.mainJob,
-      altJobs: parsed.data.altJobs,
-      gearLink: parsed.data.gearLink ?? null,
-      notes: parsed.data.notes ?? null,
-      sortOrder: nextOrder,
-    })
-    .returning({ id: player.id });
-  const newPlayerId = inserted[0]?.id;
+  await db.insert(player).values({
+    teamId: parsed.data.teamId,
+    name: parsed.data.name,
+    mainJob: parsed.data.mainJob,
+    altJobs: parsed.data.altJobs,
+    gearLink: parsed.data.gearLink ?? null,
+    notes: parsed.data.notes ?? null,
+    sortOrder: nextOrder,
+  });
 
-  // Phase 2.2 — Tier-onboarding default. Every new player row gets
-  // a 12-slot starter BiS plan with `currentSource = "Crafted"` so
-  // the BiS table is meaningful immediately and the algorithm has
-  // a non-trivial gear-gap to work with from the first scoring
-  // call. Offhand is `NotPlanned` for non-PLDs (only paladins
-  // actually equip an offhand). The user fills in the
-  // `desiredSource` per slot afterwards via the BiS table.
-  if (newPlayerId !== undefined) {
-    const defaults = defaultBisChoicesForJob(parsed.data.mainJob);
-    await db.insert(bisChoice).values(
-      defaults.map((d) => ({
-        playerId: newPlayerId,
-        slot: d.slot,
-        desiredSource: d.desiredSource,
-        currentSource: d.currentSource,
-      })),
-    );
-  }
-
-  // Revalidate every tier-scoped surface — players appear in the
-  // tier's Players tab, the dashboard's tier card stat, and the
-  // tier-detail header. Hard-coding `/tiers/[id]` is futile because
-  // the params change with every tier; revalidating the layout root
-  // covers everything.
+  // Revalidate every team-scoped surface — the new player appears
+  // on the /team page, in the "add to tier" dialog of every active
+  // tier, and in the dashboard tier-card stats once they get added
+  // to a tier.
   revalidatePath("/", "layout");
   return { ok: true };
 }
 
 /**
  * Update an existing player. Only the editable fields touch the row;
- * `tier_id`, `sort_order`, and `created_at` are intentionally
- * preserved (a player can't move tiers — the rollover flow creates
- * a new row instead).
+ * `team_id`, `sort_order`, and `created_at` are intentionally
+ * preserved (a player can't move teams in a single-team v2 deploy).
  */
 export async function updatePlayerAction(
   _previous: ActionState,
@@ -136,9 +117,10 @@ export async function updatePlayerAction(
 
 /**
  * Delete a player. The schema's cascade settings handle dependent
- * BiS choices automatically; loot drops the player previously
- * received are kept (the FK has `ON DELETE SET NULL`) so the history
- * stays accurate even after a player leaves the static.
+ * BiS choices (across all tiers) automatically; loot drops the
+ * player previously received are kept (the FK has
+ * `ON DELETE SET NULL`) so the history stays accurate even after a
+ * player leaves the team.
  */
 export async function deletePlayerAction(
   _previous: ActionState,

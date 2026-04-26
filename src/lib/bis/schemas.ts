@@ -18,6 +18,7 @@ export type BisMarker = (typeof BIS_MARKERS)[number];
 
 export const bisUpsertSchema = z.object({
   playerId: z.coerce.number().int().positive(),
+  tierId: z.coerce.number().int().positive(),
   slot: z.enum(SLOTS),
   desiredSource: z.enum(BIS_SOURCES),
   currentSource: z.enum(BIS_SOURCES),
