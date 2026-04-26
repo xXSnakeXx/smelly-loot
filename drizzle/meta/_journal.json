@@ -29,6 +29,13 @@
       "when": 1777210560748,
       "tag": "0003_team_scoped_players_with_tier_bis",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1777300000000,
+      "tag": "0004_update_default_extreme_crafted_ilvs",
+      "breakpoints": true
     }
   ]
 }
