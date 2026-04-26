@@ -86,6 +86,14 @@ export async function saveBisChoice(
       );
   }
 
-  revalidatePath(`/players/${data.playerId}`);
+  // BiS edits feed straight into the algorithm's `desired_source` /
+  // `current_source` lookups, so every tier-scoped surface
+  // (`/tiers/[id]` Plan / Track / Players / History tabs, the
+  // dashboard tier card stats, the player detail page) needs to
+  // re-render. `revalidatePath("/", "layout")` invalidates every
+  // route below the root layout in one call — broader than strictly
+  // necessary, but the cost is negligible and the alternative is a
+  // brittle list of explicit per-route paths.
+  revalidatePath("/", "layout");
   return { ok: true };
 }

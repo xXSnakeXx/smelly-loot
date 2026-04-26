@@ -82,7 +82,15 @@ export async function updatePageAdjustAction(
       });
   }
 
-  revalidatePath(`/players/${data.playerId}`);
-  revalidatePath("/loot");
+  // Page-balance adjustments change the algorithm's
+  // `effective_need` for every future drop — so every tier-scoped
+  // surface (`/tiers/[id]` Plan tab in particular) needs to
+  // re-render. `revalidatePath("/", "layout")` invalidates every
+  // route below the root layout in one call. The previous
+  // per-route invalidation (`/players/${id}` + `/loot`) was
+  // narrower than the data dependency and missed the post-v1.2.0
+  // `/tiers/[id]` page entirely (the legacy `/loot` route is now
+  // just a redirect).
+  revalidatePath("/", "layout");
   return { ok: true };
 }
