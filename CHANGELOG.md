@@ -7,6 +7,53 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-04-25
+
+### Fixed
+
+- **Plan tab and Track tab now agree on the active-week's drops.**
+  The Plan-tab simulator was scoring its first iteration against
+  `currentWeek + 1` and incrementing every floor's page count
+  unconditionally. That double-counted the active-week kill (the
+  `boss_kill` row already increments pages via the live snapshot,
+  so the simulator's own `+1 page` step was redundant). Result:
+  Plan-Week-1 ranked the players differently from Track for the
+  same drop, and the team got two inconsistent answers for the
+  same kill.
+
+  The simulator now accepts an `alreadyKilledFloors` option naming
+  the floors whose active-week kill is already in the input
+  snapshot. Those floors skip the `+1 page` step on iteration 0
+  only — from iteration 1 onward the kill is purely simulated and
+  the simulator always increments. The Plan tab passes
+  `currentWeek` (not `+1`) and the floors it has live kills for,
+  so its first-iteration scoring now matches `scoreDrop` exactly.
+
+  Three new unit tests in `src/lib/loot/timeline.test.ts` lock the
+  parity in.
+
+### Added
+
+- **Default BiS rows on every new player.** Fresh player rows used
+  to land in the database without any `bis_choice` siblings, so
+  the BiS table rendered empty and the algorithm had no gear-gap
+  to score against until the user manually picked a current source
+  for every slot on every player. `createPlayerAction` now stamps
+  12 `bis_choice` rows on each new player: `currentSource =
+  "Crafted"` for every wearable slot, `desiredSource =
+  "NotPlanned"` so the algorithm doesn't recommend any drops
+  until the team explicitly picks targets. Offhand stays
+  `NotPlanned` for non-PLD jobs (they never see an offhand drop).
+
+  The same defaults apply to players copied over by
+  `createTierAction` during a tier rollover — the previous tier's
+  BiS plans deliberately don't carry over (a new tier means a new
+  max iLv, the team replans), but the table now renders with the
+  canonical Crafted baseline instead of empty rows.
+
+  Helper `defaultBisChoicesForJob` lives in
+  `src/lib/ffxiv/bis-defaults.ts` and is covered by 5 unit tests.
+
 ## [1.4.2] - 2026-04-26
 
 ### Fixed
