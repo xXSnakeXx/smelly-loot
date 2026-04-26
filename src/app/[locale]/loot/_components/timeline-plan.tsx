@@ -13,6 +13,8 @@ import {
 import type { TimelineForFloor } from "@/lib/loot/timeline";
 import { cn } from "@/lib/utils";
 
+import { RefreshButton } from "./refresh-button";
+
 interface TimelinePlanProps {
   timelines: TimelineForFloor[];
   weeksAhead: number;
@@ -29,11 +31,13 @@ interface TimelinePlanProps {
  * items but the cells stay empty — the operator records those drops
  * manually in the Track tab.
  *
- * The whole component is intentionally a Server Component: no
- * interactivity, just data → markup. Re-rendering happens
- * automatically when the underlying snapshot changes (e.g. after a
- * real drop is recorded in the Track tab) because /loot is
- * `force-dynamic`.
+ * The component itself is a Server Component: no interactivity, just
+ * data → markup. The plan re-computes automatically whenever a
+ * Server Action calls `revalidatePath` (kill toggles, drop awards,
+ * BiS edits, page-adjust saves, roster changes, tier-settings edits).
+ * For everything else — direct DB edits, multi-tab sessions — the
+ * inline `<RefreshButton>` is a manual escape hatch that triggers a
+ * fresh RSC fetch via `router.refresh()`.
  */
 export function TimelinePlan({
   timelines,
@@ -55,9 +59,12 @@ export function TimelinePlan({
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
-        {t("description", { weeksAhead })}
-      </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <p className="max-w-2xl text-sm text-muted-foreground">
+          {t("description", { weeksAhead })}
+        </p>
+        <RefreshButton />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {timelines.map((floor) => (

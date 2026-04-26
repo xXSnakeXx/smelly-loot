@@ -269,7 +269,10 @@
       "untrackedFloor": "Manuelle Verteilung — kein Algorithmus",
       "weekColumn": "Woche",
       "noRecipient": "—",
-      "viaPagesHint": "Spieler hat genug Pages, um sich diesen Slot selbst zu kaufen."
+      "viaPagesHint": "Spieler hat genug Pages, um sich diesen Slot selbst zu kaufen.",
+      "refresh": "Neu berechnen",
+      "refreshing": "Berechne…",
+      "refreshHint": "Plan vom aktuellen Snapshot neu berechnen. UI-Änderungen aktualisieren automatisch; dieser Button ist für direkte DB-Änderungen oder Multi-Tab-Sessions."
     },
     "noWeeks": {
       "title": "Noch keine Raid-Woche erfasst.",
