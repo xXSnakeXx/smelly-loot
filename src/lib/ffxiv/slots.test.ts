@@ -56,15 +56,16 @@ describe("deriveSourceIlvs", () => {
     // the floor-4 weapon (795) — which the algorithm doesn't compete
     // on. TomeUp lands on the same 790 cap (an upgraded tome piece
     // reaches the Savage iLv exactly); Catchup and Tome both sit at
-    // 780.
+    // 780. Extreme sits at 775 (Savage - 15), Crafted and Relic
+    // share 770 (Savage - 20).
     const ilvs = deriveSourceIlvs(790);
     expect(ilvs.Savage).toBe(790);
     expect(ilvs.TomeUp).toBe(790);
     expect(ilvs.Catchup).toBe(780);
     expect(ilvs.Tome).toBe(780);
-    expect(ilvs.Extreme).toBe(770);
+    expect(ilvs.Extreme).toBe(775);
     expect(ilvs.Relic).toBe(770);
-    expect(ilvs.Crafted).toBe(765);
+    expect(ilvs.Crafted).toBe(770);
     expect(ilvs.WHYYYY).toBe(760);
     expect(ilvs.JustNo).toBe(750);
   });

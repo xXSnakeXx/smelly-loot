@@ -81,15 +81,17 @@ export type ItemKey = (typeof ITEM_KEYS)[number];
  * - `Catchup` and `Tome` share `max - 10` — augmented crafted /
  *   alliance-raid / mid-tier extreme drops at the same iLv as the
  *   raw, non-upgraded weekly tome cap.
+ * - `Crafted` and `Relic` share `max - 20` — the high-end crafted
+ *   set lands at the same iLv as the relic weapon's mid-tier step.
  */
 export const DEFAULT_ILV_DELTAS: Record<BisSource, number> = {
   Savage: 0,
   TomeUp: 0,
   Catchup: -10,
   Tome: -10,
-  Extreme: -20,
+  Extreme: -15,
   Relic: -20,
-  Crafted: -25,
+  Crafted: -20,
   WHYYYY: -30,
   JustNo: -40,
   // Synthetic entry — not really an iLv, but kept here so the lookup
