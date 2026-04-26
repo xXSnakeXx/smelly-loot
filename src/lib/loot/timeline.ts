@@ -62,11 +62,29 @@ export interface TimelineForFloor {
 
 export interface SimulateOptions {
   /**
-   * The week number the simulation starts at — usually `currentWeek + 1`
-   * because the current week is being tracked live in the other tab.
+   * The week number the simulator starts at.
+   *
+   * For the Plan tab this is the active week — `currentWeek` from
+   * `findCurrentWeek` — *not* `currentWeek + 1`. Combined with
+   * `alreadyKilledFloors` below, that makes the first iteration
+   * score against the same snapshot Track's `scoreDrop` does, so
+   * the Plan and Track tabs stay in sync for the active week's
+   * drops.
    */
   startingWeekNumber: number;
   weeksAhead: number;
+  /**
+   * Floors whose active-week kill is already reflected in the
+   * input snapshot's `pages` map (because the live database has
+   * recorded the `boss_kill` row). The simulator skips its own
+   * `+1 page` step for these floors on the first iteration only —
+   * incrementing again would double-count the kill and inflate
+   * `buyPower` past Track's view of the same data.
+   *
+   * Defaults to an empty list so existing call sites and tests keep
+   * the pre-v1.5.0 "increment every week" semantics.
+   */
+  alreadyKilledFloors?: ReadonlyArray<number>;
   floors: ReadonlyArray<{
     floorNumber: number;
     itemKeys: ItemKey[];
@@ -101,12 +119,28 @@ export function simulateLootTimeline(
 
   const resultByFloor = new Map(result.map((r) => [r.floorNumber, r]));
 
+  // Floors whose active-week kill is already counted in the input
+  // snapshot — the simulator should NOT add another page for them on
+  // the first iteration. Stored as a Set for O(1) lookup.
+  const alreadyKilledOnFirstWeek = new Set<number>(
+    options.alreadyKilledFloors ?? [],
+  );
+
   for (let i = 0; i < options.weeksAhead; i += 1) {
     const weekNumber = options.startingWeekNumber + i;
 
     for (const floor of options.floors) {
-      // Boss kill: everyone gets +1 page of this floor's token.
-      snapshots = snapshots.map((s) => incrementPages(s, floor.floorNumber));
+      // Boss kill: every player gets +1 page of this floor's token.
+      // For the first iteration we skip floors the caller flagged as
+      // already-killed so the snapshot the simulator scores matches
+      // the snapshot Track's `scoreDrop` scores for the same data.
+      // From the second iteration onward there's no ambiguity — the
+      // kill is purely simulated and we always increment.
+      const skipIncrement =
+        i === 0 && alreadyKilledOnFirstWeek.has(floor.floorNumber);
+      if (!skipIncrement) {
+        snapshots = snapshots.map((s) => incrementPages(s, floor.floorNumber));
+      }
 
       const weekDrops: TimelineDrop[] = [];
       if (floor.trackedForAlgorithm) {
