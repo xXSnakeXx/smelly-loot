@@ -30,12 +30,20 @@ interface NewTierDialogProps {
    * Element rendered as the dialog's trigger. Pass the desired
    * trigger (a button, a card, etc.); Base UI's `render` prop swaps
    * the trigger button's render-element for this one.
+   *
+   * The element MUST be a real DOM element (or a `forwardRef`
+   * component that spreads its props), because Base UI's
+   * `DialogPrimitive.Trigger` clones the element and merges click /
+   * keyboard / ARIA handlers onto its props. A wrapper component
+   * that ignores those merged props will silently swallow the open
+   * gesture.
    */
   trigger?: ReactElement;
   /**
    * If `true`, the trigger is the dashboard's "plus card" — a
-   * dashed-border card that visually invites the user to add a
-   * new tier alongside the existing tier-grid.
+   * dashed-border button rendered to match the surrounding tier
+   * grid. Triggers via the `render` prop with a real `<button>`,
+   * so Base UI's prop merging lands directly on the DOM node.
    */
   asPlusCard?: boolean;
 }
@@ -83,14 +91,32 @@ export function NewTierDialog({ trigger, asPlusCard }: NewTierDialogProps) {
 
   const errors = state.ok ? {} : state.errors;
 
-  const triggerEl =
-    trigger ??
-    (asPlusCard ? (
-      <PlusCardTrigger
-        title={tCard("title")}
-        description={tCard("description")}
-      />
-    ) : null);
+  // The plus-card trigger is rendered as a native <button> directly
+  // here (instead of via a sub-component) so Base UI's
+  // `DialogPrimitive.Trigger` can clone the element and merge its
+  // open-handlers onto the DOM node. Wrapping the button inside a
+  // function component would swallow the merged props because the
+  // wrapper doesn't spread them.
+  const plusCardTrigger = (
+    <button
+      type="button"
+      className={cn(
+        "group flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border p-6 text-muted-foreground",
+        "transition-colors hover:border-primary hover:bg-muted/40 hover:text-foreground",
+        "min-h-[160px]",
+      )}
+    >
+      <span className="flex size-10 items-center justify-center rounded-full border border-border bg-muted/40 transition-colors group-hover:border-primary group-hover:bg-primary/10 group-hover:text-primary">
+        <Plus className="size-5" />
+      </span>
+      <span className="text-sm font-medium text-foreground">
+        {tCard("title")}
+      </span>
+      <span className="text-xs">{tCard("description")}</span>
+    </button>
+  );
+
+  const triggerEl = trigger ?? (asPlusCard ? plusCardTrigger : null);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -122,7 +148,7 @@ export function NewTierDialog({ trigger, asPlusCard }: NewTierDialogProps) {
               min={100}
               max={2000}
               required
-              defaultValue={795}
+              defaultValue={790}
             />
           </FormRow>
           <DialogFooter>
@@ -172,37 +198,5 @@ function FormRow({
       {help ? <p className="text-xs text-muted-foreground">{help}</p> : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
-  );
-}
-
-/**
- * Dashed-border "plus" card used as the dialog trigger inside the
- * dashboard's tier-grid. Mirrors the surrounding tier-cards in size
- * and rhythm so the grid stays a clean 2/3-column layout, but uses a
- * dashed border + centered Plus icon to read clearly as an
- * affordance ("add another tier").
- */
-function PlusCardTrigger({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "group flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border p-6 text-muted-foreground",
-        "transition-colors hover:border-primary hover:bg-muted/40 hover:text-foreground",
-        "min-h-[160px]",
-      )}
-    >
-      <div className="flex size-10 items-center justify-center rounded-full border border-border bg-muted/40 transition-colors group-hover:border-primary group-hover:bg-primary/10 group-hover:text-primary">
-        <Plus className="size-5" />
-      </div>
-      <span className="text-sm font-medium text-foreground">{title}</span>
-      <span className="text-xs">{description}</span>
-    </button>
   );
 }
