@@ -256,7 +256,7 @@
     "title": "Loot-Verteilung",
     "description": "Plane zukünftige Wochen und tracke die aktuellen Drops.",
     "tabs": {
-      "players": "Spieler",
+      "roster": "Roster",
       "plan": "Plan",
       "track": "Tracking",
       "history": "Historie",

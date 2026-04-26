@@ -66,10 +66,24 @@ export async function loadPlayerSnapshots(
   tierId: number,
 ): Promise<PlayerSnapshot[]> {
   // 1. Players + their BiS choices.
+  //
+  // v2.0 — players are team-scoped. The roster on a tier is "every
+  // player that has at least one `bis_choice` row for this tier".
+  // We join through `bis_choice` to filter the player list down to
+  // the tier's roster, then read the player rows themselves so the
+  // snapshot has the canonical name / job / etc. The DISTINCT on
+  // `player.id` collapses the 12-rows-per-player multiplier the
+  // join introduces.
+  const rosterIds = db
+    .select({ id: bisChoice.playerId })
+    .from(bisChoice)
+    .where(eq(bisChoice.tierId, tierId))
+    .groupBy(bisChoice.playerId);
+
   const players = await db
     .select()
     .from(playerTable)
-    .where(eq(playerTable.tierId, tierId))
+    .where(inArray(playerTable.id, rosterIds))
     .orderBy(playerTable.sortOrder, playerTable.id);
 
   if (players.length === 0) return [];
@@ -78,7 +92,9 @@ export async function loadPlayerSnapshots(
   const bisRows = await db
     .select()
     .from(bisChoice)
-    .where(inArray(bisChoice.playerId, playerIds));
+    .where(
+      and(eq(bisChoice.tierId, tierId), inArray(bisChoice.playerId, playerIds)),
+    );
   const bisByPlayer = indexBy(bisRows, (r) => r.playerId);
 
   // 2. Boss kills per floor (tier-wide; every player on the team gets

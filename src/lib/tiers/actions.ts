@@ -134,18 +134,11 @@ export async function createTierAction(
   const team = await getCurrentTeam();
   const ilvs = deriveSourceIlvs(maxIlv);
 
-  // 1. Identify the previously-active tier (if any) so we can copy
-  // its roster across. Captured BEFORE the archive step below
-  // because once the row is archived `getActiveTier` would return a
-  // different tier (or throw).
-  const previouslyActive = await db
-    .select()
-    .from(tierTable)
-    .where(and(eq(tierTable.teamId, team.id), isNull(tierTable.archivedAt)))
-    .orderBy(tierTable.createdAt);
-  const sourceTier = previouslyActive.at(-1);
-
-  // 2. Archive any currently-active tier on this team.
+  // 1. Archive any currently-active tier on this team. v2.0 doesn't
+  // need to track the previous tier to copy its roster from — the
+  // new tier's roster comes from the team-level player list, not
+  // from the previous tier — so we can drop the lookup that v1.x
+  // used to do here.
   await db
     .update(tierTable)
     .set({ archivedAt: new Date() })
@@ -193,55 +186,35 @@ export async function createTierAction(
     })),
   );
 
-  // 5. Copy the previous tier's roster onto the new tier (Topic
-  // "tier-rollover keeps the static together" — players are
-  // tier-scoped, so creating a new tier without copying would leave
-  // the new tier completely empty). BiS / page balances / loot
-  // history deliberately don't copy: each tier starts fresh on
-  // those fronts so the team can replan around new gear options.
-  if (sourceTier) {
-    const previousRoster = await db
-      .select()
-      .from(playerTable)
-      .where(eq(playerTable.tierId, sourceTier.id))
-      .orderBy(playerTable.sortOrder, playerTable.id);
+  // 5. Auto-add every team player to the new tier's roster (v2.0 —
+  // tier membership is implicit via `bis_choice` rows). Each
+  // player gets the 12-slot Crafted-baseline default BiS plan so
+  // the BiS table renders meaningfully from the moment the tier is
+  // created. The team can then prune the roster via the tier-detail
+  // Roster tab if a particular tier won't include everyone.
+  //
+  // The previous-tier's BiS plans deliberately don't carry over (a
+  // new tier means a new max iLv — the team replans), but the
+  // membership does. The `sourceTier` parameter is now informational
+  // only; the auto-roster comes from the team, not the source tier.
+  const teamRoster = await db
+    .select({ id: playerTable.id, mainJob: playerTable.mainJob })
+    .from(playerTable)
+    .where(eq(playerTable.teamId, team.id))
+    .orderBy(playerTable.sortOrder, playerTable.id);
 
-    if (previousRoster.length > 0) {
-      const newPlayerIds = await db
-        .insert(playerTable)
-        .values(
-          previousRoster.map((p) => ({
-            tierId: newTierId,
-            name: p.name,
-            mainJob: p.mainJob,
-            altJobs: p.altJobs,
-            gearLink: p.gearLink ?? null,
-            notes: p.notes ?? null,
-            sortOrder: p.sortOrder,
-          })),
-        )
-        .returning({ id: playerTable.id, mainJob: playerTable.mainJob });
-
-      // Phase 2.2 — Stamp the default BiS rows on each newly-copied
-      // player. The previous-tier BiS plans deliberately don't
-      // carry over (a new tier means a new max iLv, the team
-      // replans), but we DO want the table to render with sensible
-      // defaults instead of empty rows. The 12-slot Crafted /
-      // NotPlanned baseline matches what `createPlayerAction` does
-      // for fresh players.
-      if (newPlayerIds.length > 0) {
-        await db.insert(bisChoice).values(
-          newPlayerIds.flatMap((p) =>
-            defaultBisChoicesForJob(p.mainJob).map((d) => ({
-              playerId: p.id,
-              slot: d.slot,
-              desiredSource: d.desiredSource,
-              currentSource: d.currentSource,
-            })),
-          ),
-        );
-      }
-    }
+  if (teamRoster.length > 0) {
+    await db.insert(bisChoice).values(
+      teamRoster.flatMap((p) =>
+        defaultBisChoicesForJob(p.mainJob).map((d) => ({
+          playerId: p.id,
+          tierId: newTierId,
+          slot: d.slot,
+          desiredSource: d.desiredSource,
+          currentSource: d.currentSource,
+        })),
+      ),
+    );
   }
 
   // 6. Refresh every page that reads tiers or loot context.

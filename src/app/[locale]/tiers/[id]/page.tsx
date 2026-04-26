@@ -14,7 +14,7 @@ import {
   listFloorsForTier,
   listLootDropsForWeek,
 } from "@/lib/db/queries-loot";
-import { listPlayersForTier } from "@/lib/db/queries-players";
+import { listPlayersInTier } from "@/lib/db/queries-players";
 import { findTierById } from "@/lib/db/queries-tiers";
 import type { ItemKey } from "@/lib/ffxiv/slots";
 import { findCurrentWeek } from "@/lib/loot/actions";
@@ -22,7 +22,7 @@ import { loadPlayerSnapshots, loadTierSnapshot } from "@/lib/loot/snapshots";
 import { simulateLootTimeline } from "@/lib/loot/timeline";
 
 import { HistoryView } from "./_components/history-view";
-import { PlayersView } from "./_components/players-view";
+import { RosterView } from "./_components/roster-view";
 import { TierDetailTabs } from "./_components/tier-detail-tabs";
 import { TrackView } from "./_components/track-view";
 
@@ -77,7 +77,7 @@ export default async function TierDetailPage({
   const [floors, players, snapshots, tierSnapshot, currentWeek] =
     await Promise.all([
       listFloorsForTier(tier.id),
-      listPlayersForTier(tier.id),
+      listPlayersInTier(tier.id),
       loadPlayerSnapshots(tier.id),
       loadTierSnapshot(tier.id),
       findCurrentWeek(tier.id),
@@ -216,7 +216,7 @@ export default async function TierDetailPage({
       </header>
 
       <TierDetailTabs
-        players={<PlayersView tierId={tier.id} />}
+        roster={<RosterView tierId={tier.id} teamId={team.id} />}
         plan={planNode}
         track={trackNode}
         history={historyNode}

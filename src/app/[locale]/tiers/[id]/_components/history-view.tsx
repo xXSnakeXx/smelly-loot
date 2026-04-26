@@ -6,7 +6,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/lib/db";
-import { listPlayersForTier } from "@/lib/db/queries-players";
+import { listPlayersInTier } from "@/lib/db/queries-players";
 import {
   floor as floorTable,
   lootDrop,
@@ -56,7 +56,7 @@ export async function HistoryView({ tierId }: { tierId: number }) {
       .from(floorTable)
       .where(eq(floorTable.tierId, tierId))
       .orderBy(floorTable.number),
-    listPlayersForTier(tierId),
+    listPlayersInTier(tierId),
   ]);
 
   const playerNameById = new Map(players.map((p) => [p.id, p.name]));

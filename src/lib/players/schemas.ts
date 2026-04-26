@@ -51,7 +51,7 @@ const altJobsList = z
   .transform((jobs) => Array.from(new Set(jobs)));
 
 export const playerCreateSchema = z.object({
-  tierId: z.coerce.number().int().positive(),
+  teamId: z.coerce.number().int().positive(),
   name: trimmedString,
   mainJob: jobCode,
   altJobs: altJobsList.optional().default([]),

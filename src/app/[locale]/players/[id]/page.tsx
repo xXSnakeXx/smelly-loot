@@ -106,7 +106,7 @@ export default async function PlayerDetailPage({
 
   const { tier } = await getCurrentContext();
   const [choices, stats] = await Promise.all([
-    listBisChoicesForPlayer(playerId),
+    listBisChoicesForPlayer(playerId, tier.id),
     loadPlayerStats(playerId, tier.id),
   ]);
   const role = jobToGearRole(player.mainJob);
