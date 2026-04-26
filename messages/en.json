@@ -5,6 +5,8 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "team": "Team",
+    "teamSettings": "Team settings",
     "players": "Players",
     "tier": "Tier",
     "loot": "Loot",
@@ -64,6 +66,17 @@
     }
   },
   "team": {
+    "roster": {
+      "title": "Team roster",
+      "description": "Manage your raiders' stable identity — name, main job, alt jobs, gear-tracker URL. Tier-specific data (BiS plan, pages, loot history) lives per-tier on the tier-detail page.",
+      "addCta": "Add player",
+      "empty": {
+        "title": "No players on the team yet.",
+        "description": "Add your raiders. Once they're on the team you can pull them into each tier's roster as needed.",
+        "cta": "Add the first player",
+        "noTeamPlayers": "Add players to the team roster first, then assign them to this tier."
+      }
+    },
     "settings": {
       "title": "Team settings",
       "description": "Rename the static or change the default UI language.",
@@ -77,6 +90,34 @@
       },
       "save": "Save",
       "savedToast": "Team settings saved."
+    }
+  },
+  "roster": {
+    "table": {
+      "name": "Name",
+      "job": "Main job",
+      "altJobs": "Alt jobs",
+      "actions": "Actions",
+      "removeFromTier": "Remove from tier"
+    },
+    "addCta": "Add players",
+    "empty": {
+      "title": "No one in the tier roster yet.",
+      "description": "Pick from the team roster who's raiding this tier. Each added player gets a BiS table with current=Crafted defaults.",
+      "cta": "Add players",
+      "noTeamPlayers": "Add players to the team roster first, then assign them to this tier."
+    },
+    "addDialog": {
+      "title": "Add players to tier",
+      "description": "Pick one or more team players. Each gets a 12-slot BiS table with current=Crafted and desired=NotPlanned.",
+      "submit": "Add {count}",
+      "cancel": "Cancel"
+    },
+    "toasts": {
+      "added": "Added {count} player(s) to the tier.",
+      "addError": "{count} player(s) could not be added.",
+      "removed": "Removed {name} from the tier.",
+      "removeError": "Removal failed — please try again."
     }
   },
   "players": {
@@ -256,7 +297,7 @@
     "title": "Loot distribution",
     "description": "Plan future weeks and track this week's actual drops.",
     "tabs": {
-      "players": "Players",
+      "roster": "Roster",
       "plan": "Plan",
       "track": "Track",
       "history": "History",

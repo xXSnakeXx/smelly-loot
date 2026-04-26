@@ -35,10 +35,10 @@ export async function SiteHeader() {
         <MainNav />
         <div className="ml-auto flex items-center gap-1">
           <Link
-            href="/team"
+            href="/team/settings"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label={t("settings")}
-            title={t("settings")}
+            aria-label={t("teamSettings")}
+            title={t("teamSettings")}
           >
             <Settings className="size-4" />
           </Link>

@@ -1,7 +1,6 @@
 import { setRequestLocale } from "next-intl/server";
 
 import { redirect } from "@/i18n/navigation";
-import { getCurrentContext } from "@/lib/db/queries";
 
 // Live data per request — see the dashboard page for the rationale.
 export const dynamic = "force-dynamic";
@@ -9,16 +8,14 @@ export const dynamic = "force-dynamic";
 /**
  * Backwards-compatible redirect from the legacy `/players` route.
  *
- * Players are tier-scoped from v1.4 onwards; the Players tab inside
- * the tier-detail page (`/tiers/<id>`) is the canonical home for
- * the roster. We resolve the active tier per request and redirect
- * into its detail view, where the Players tab is the default.
+ * Players became team-scoped again in v2.0; the canonical roster
+ * lives on `/team`. The redirect is kept so anyone with a bookmark
+ * to the old URL (or a stale browser tab) lands somewhere useful.
  */
 export default async function PlayersRedirect({
   params,
 }: PageProps<"/[locale]">) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const { tier } = await getCurrentContext();
-  redirect({ href: `/tiers/${tier.id}`, locale });
+  redirect({ href: "/team", locale });
 }

@@ -50,7 +50,7 @@ interface PlayerFormDialogProps {
    * ignored for edits because a player's tier is fixed at creation
    * time (rolling over to a new tier creates a fresh player row).
    */
-  tierId: number;
+  teamId: number;
   /**
    * Element rendered as the dialog's trigger. Base UI's `render` prop
    * swaps the trigger's underlying button for this one — equivalent
@@ -75,7 +75,7 @@ interface PlayerFormDialogProps {
  */
 export function PlayerFormDialog({
   player,
-  tierId,
+  teamId,
   trigger,
 }: PlayerFormDialogProps) {
   const t = useTranslations("players.form");
@@ -116,7 +116,7 @@ export function PlayerFormDialog({
           {isEditing ? (
             <input type="hidden" name="id" value={player.id} />
           ) : (
-            <input type="hidden" name="tierId" value={tierId} />
+            <input type="hidden" name="teamId" value={teamId} />
           )}
 
           <FormRow id="name" label={t("name.label")} error={errors.name}>

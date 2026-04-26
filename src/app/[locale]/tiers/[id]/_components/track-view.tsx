@@ -11,7 +11,7 @@ import type {
   listFloorsForTier,
   listLootDropsForWeek,
 } from "@/lib/db/queries-loot";
-import type { listPlayersForTier } from "@/lib/db/queries-players";
+import type { listPlayersInTier } from "@/lib/db/queries-players";
 import type { ItemKey } from "@/lib/ffxiv/slots";
 import { scoreDrop } from "@/lib/loot/algorithm";
 import type {
@@ -44,7 +44,7 @@ export async function TrackView({
   floors: Awaited<ReturnType<typeof listFloorsForTier>>;
   kills: Awaited<ReturnType<typeof listBossKillsForWeek>>;
   drops: Awaited<ReturnType<typeof listLootDropsForWeek>>;
-  players: Awaited<ReturnType<typeof listPlayersForTier>>;
+  players: Awaited<ReturnType<typeof listPlayersInTier>>;
   snapshots: Awaited<ReturnType<typeof loadPlayerSnapshots>>;
   tierSnapshot: Awaited<ReturnType<typeof loadTierSnapshot>>;
 }) {

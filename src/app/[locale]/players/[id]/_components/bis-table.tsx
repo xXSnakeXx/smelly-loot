@@ -103,6 +103,7 @@ export function BisTable({ player, tier, initialChoices }: BisTableProps) {
     startTransition(async () => {
       const result = await saveBisChoice({
         playerId: player.id,
+        tierId: tier.id,
         slot,
         desiredSource: next.desiredSource,
         currentSource: next.currentSource,
