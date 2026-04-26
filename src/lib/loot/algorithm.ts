@@ -199,25 +199,34 @@ function scoreGear(
   const slotsForItem = SLOTS_BY_ITEM_KEY[context.itemKey as GearItemKey];
   const cost = context.tier.buyCostByItem.get(context.itemKey);
 
-  // `buyPower` is computed and reported in the breakdown so the UI
-  // can still surface it as context, but as of v2.2 it is *not*
-  // subtracted from `effectiveNeed` for gear drops. Two reasons:
+  // Page-aware purchase simulation (v2.2.1): we assume that every
+  // week each player has used their accumulated pages to buy the
+  // cheapest-acquirable slots they still need, and only the
+  // un-purchased slots compete for actual drops.
   //
-  //   1. The previous behaviour double-counted page balances across
-  //      a player's multiple needed items: a player with 3 Floor-1
-  //      pages who needed three different Floor-1 accessories would
-  //      see `buyPower = 1` reapplied to each item independently,
-  //      so each one's `effectiveNeed` dropped to 0 even though they
-  //      could only buy *one* accessory total.
-  //   2. Pages on Floors 2/3 are spent primarily on the Glaze /
-  //      Twine vendors (TomeUp upgrades), not on gear pieces, so
-  //      reducing gear-drop priority by Floor-2/3 pages mis-models
-  //      the team's actual page economy.
+  // This solves two earlier issues simultaneously:
   //
-  // The simpler correct rule is "drops are free; pages are a
-  // separate purchase track". The `buyPower` factor still applies
-  // to material drops in `scoreMaterial` (where pages *are* the
-  // canonical sink).
+  //   1. Pre-v2.2 the algorithm subtracted `buyPower` from each
+  //      item's `effectiveNeed` independently, so 3 Floor-1 pages
+  //      across 3 needed accessories zeroed out all three (the
+  //      Fara case) — even though the player can only buy ONE
+  //      accessory total.
+  //   2. v2.2 ignored pages entirely, so a page-rich player
+  //      (9 Floor-1 pages, 1 needed item) still got the drop
+  //      recommended even though they could trivially have bought
+  //      the slot themselves.
+  //
+  // The new rule pre-computes a per-(player, floor) set of
+  // "purchased" slots: pages divided by the floor's per-item cost
+  // gives the number of slots covered by self-purchase, picked in
+  // a deterministic floor-item order. The score for any specific
+  // item then only counts slots that are NOT in that set.
+  const purchasedSlots = computePurchasedSlots(
+    player,
+    context.tier,
+    context.floorNumber,
+    dropSource,
+  );
   const buyPower = cost
     ? Math.floor((player.pages.get(cost.floor) ?? 0) / cost.cost)
     : 0;
@@ -234,7 +243,14 @@ function scoreGear(
       (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) === dropSource,
   ).length;
 
-  const effectiveNeed = Math.max(0, slotsWanting - slotsAlready);
+  // Effective need: slots wanting the drop source, not already
+  // wearing it, and not already accounted for by self-purchase.
+  const effectiveNeed = slotsForItem.filter(
+    (slot) =>
+      (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource &&
+      (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) !== dropSource &&
+      !purchasedSlots.has(slot),
+  ).length;
 
   const desiredIlv = ilvForSource(context.tier, dropSource) ?? 0;
   const currentIlvOfFirstNeedingSlot = slotsForItem
@@ -342,3 +358,75 @@ const SLOTS_FOR_MATERIAL: Record<MaterialKey, readonly Slot[]> = {
   Twine: ["Head", "Chestpiece", "Gloves", "Pants", "Boots"],
   Ester: ["Weapon", "Offhand"],
 };
+
+/**
+ * Pre-computes the set of slots a player is assumed to "buy"
+ * with their accumulated pages on a given floor, in deterministic
+ * floor-item order.
+ *
+ * The simulation assumes every player spends their pages every
+ * week on the slots they still need — purchases are first-come in
+ * the order items appear on the floor (Earring → Necklace →
+ * Bracelet → Ring1 → Ring2 for Floor 1, etc.). The set returned
+ * here is then excluded from any item's `effectiveNeed` during
+ * scoring, so a page-rich player who could trivially buy a slot
+ * is no longer recommended for the matching drop.
+ *
+ * Implementation detail: floors mix gear and materials in their
+ * `buyCostByItem` entries (Floor 2 has Head/Gloves/Boots gear and
+ * Glaze material). Only gear items are eligible for slot
+ * purchase; materials feed `scoreMaterial` separately.
+ *
+ * The function is exported for unit-tests and the scoring engine.
+ */
+export function computePurchasedSlots(
+  player: PlayerSnapshot,
+  tier: TierSnapshot,
+  floorNumber: number,
+  dropSource: BisSource,
+): Set<Slot> {
+  // Collect every gear item that lives on this floor, in iteration
+  // order of `buyCostByItem` (which preserves the seed insertion
+  // order — Earring before Necklace before Bracelet, etc.). We
+  // filter out materials by checking against `SLOTS_BY_ITEM_KEY`.
+  const floorGearItems: GearItemKey[] = [];
+  for (const [itemKey, costEntry] of tier.buyCostByItem) {
+    if (costEntry.floor !== floorNumber) continue;
+    if (!(itemKey in SLOTS_BY_ITEM_KEY)) continue;
+    floorGearItems.push(itemKey as GearItemKey);
+  }
+  if (floorGearItems.length === 0) return new Set();
+
+  // All gear items on a single FF XIV floor cost the same number of
+  // pages (Floor 1 accessories are all 3, Floor 2 armor is all 4,
+  // Floor 3 chest/pants are both 6). We use the first item's cost
+  // as the canonical floor price; if a future tier breaks that
+  // pattern the algorithm will under-buy slots whose cost exceeds
+  // the canonical, which fails safe ("recommend more drops" rather
+  // than "ignore real purchases").
+  const firstCost = tier.buyCostByItem.get(floorGearItems[0]!);
+  if (!firstCost) return new Set();
+  const pages = player.pages.get(floorNumber) ?? 0;
+  const buyPower = Math.floor(pages / firstCost.cost);
+  if (buyPower === 0) return new Set();
+
+  // Build the ordered list of slots the player still needs at this
+  // floor's drop source. Items with multiple slots (only Ring →
+  // Ring1, Ring2) appear in their declared sub-order.
+  const unmetSlots: Slot[] = [];
+  for (const itemKey of floorGearItems) {
+    for (const slot of SLOTS_BY_ITEM_KEY[itemKey]) {
+      if (
+        (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource &&
+        (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) !== dropSource
+      ) {
+        unmetSlots.push(slot);
+      }
+    }
+  }
+
+  // Take the first `buyPower` slots, capped at the number of unmet
+  // slots — pages can't conjure need that doesn't exist.
+  const purchaseCount = Math.min(buyPower, unmetSlots.length);
+  return new Set(unmetSlots.slice(0, purchaseCount));
+}

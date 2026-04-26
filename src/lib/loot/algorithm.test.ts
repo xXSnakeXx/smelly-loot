@@ -149,18 +149,13 @@ describe("scoreDrop — gear", () => {
     expect(only?.breakdown.effectiveNeed).toBe(0);
   });
 
-  it("does not deprioritise page-rich players for gear drops (v2.2)", () => {
-    // v2.2 — page balances no longer reduce `effectiveNeed` for gear
-    // drops. The previous behaviour double-counted pages across a
-    // player's multiple needed items (3 pages, 3 needed accessories
-    // → each item's effective_need dropped to 0 independently even
-    // though only one was actually buyable). The simpler correct
-    // rule is "drops are free; pages are a separate purchase track".
-    //
-    // Both players still show their `buyPower` in the breakdown so
-    // the UI can surface it for context — it just doesn't move the
-    // score. Tiebreakers (last-drop week, deterministic hash) settle
-    // the ordering when scores collide.
+  it("deprioritises page-rich players via simulated self-purchase (v2.2.1)", () => {
+    // v2.2.1 — page balances are reapplied to gear scoring through
+    // a per-(player, floor) "purchased slots" simulation. PageRich
+    // has 6 Floor-1 pages (= 2 buyable accessories) and exactly
+    // one needed Earring slot, so the simulator pretends they've
+    // already bought Earring and `effectiveNeed` drops to 0.
+    // PagePoor has 0 pages and still legitimately needs the drop.
     const players = [
       makePlayer({
         id: 1,
@@ -180,26 +175,23 @@ describe("scoreDrop — gear", () => {
       }),
     ];
     const ranking = scoreDrop(players, context());
-    expect(ranking[0]?.score).toBe(ranking[1]?.score);
+    expect(ranking[0]?.player.name).toBe("PagePoor");
     expect(ranking[0]?.breakdown.effectiveNeed).toBe(1);
-    expect(ranking[1]?.breakdown.effectiveNeed).toBe(1);
+    expect(ranking[0]?.score).toBeGreaterThan(0);
     const rich = ranking.find((s) => s.player.name === "PageRich");
+    expect(rich?.breakdown.effectiveNeed).toBe(0);
+    expect(rich?.score).toBe(0);
+    // buyPower stays in the breakdown for UI surfacing.
     expect(rich?.breakdown.buyPower).toBe(2);
-    const poor = ranking.find((s) => s.player.name === "PagePoor");
-    expect(poor?.breakdown.buyPower).toBe(0);
   });
 
-  it("keeps gear scores positive across multiple needed items (no buyPower double-count)", () => {
-    // Regression for the Fara case: player has 3 Floor-1 pages and
-    // wants 3 different Floor-1 accessories (Earring, Necklace,
-    // Ring1). Pre-v2.2 each item's `effectiveNeed` dropped to 0 via
-    // `slotsWanting - buyPower = 1 - 1`, so the algorithm refused to
-    // recommend any of them — even though the player could only
-    // ever buy *one* accessory with 3 pages.
-    //
-    // v2.2: `effectiveNeed` ignores buyPower for gear, so all three
-    // items still score positive and the player keeps competing for
-    // them on the Plan tab.
+  it("only counts buyPower against actually-buyable need (no double-counting)", () => {
+    // Regression for the Fara case: 3 Floor-1 pages = exactly one
+    // buyable accessory, while the player wants three different
+    // accessories. The first item in floor-item order (Earring) is
+    // simulated as bought, and the remaining two (Necklace, Ring)
+    // keep `effectiveNeed = 1` so they still surface as drop
+    // candidates.
     const fara = makePlayer({
       id: 1,
       name: "Fara",
@@ -216,11 +208,18 @@ describe("scoreDrop — gear", () => {
       },
       pages: { 1: 3 }, // exactly enough to buy one accessory
     });
-    for (const itemKey of ["Earring", "Necklace", "Ring"] as const) {
-      const [only] = scoreDrop([fara], context({ itemKey }));
-      expect(only?.breakdown.effectiveNeed).toBeGreaterThan(0);
-      expect(only?.score).toBeGreaterThan(0);
-    }
+
+    const earring = scoreDrop([fara], context({ itemKey: "Earring" }))[0];
+    expect(earring?.breakdown.effectiveNeed).toBe(0);
+    expect(earring?.score).toBe(0);
+
+    const necklace = scoreDrop([fara], context({ itemKey: "Necklace" }))[0];
+    expect(necklace?.breakdown.effectiveNeed).toBe(1);
+    expect(necklace?.score).toBeGreaterThan(0);
+
+    const ring = scoreDrop([fara], context({ itemKey: "Ring" }))[0];
+    expect(ring?.breakdown.effectiveNeed).toBe(1);
+    expect(ring?.score).toBeGreaterThan(0);
   });
 
   it("applies Topic 1 role weights — melee 1.10 beats phys-range 1.05 beats caster 1.00", () => {

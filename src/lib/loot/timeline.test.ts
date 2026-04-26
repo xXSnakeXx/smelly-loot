@@ -201,12 +201,16 @@ describe("simulateLootTimeline", () => {
     expect(new Set(recipients).has("Rei")).toBe(true);
   });
 
-  it("page balances do not deprioritise gear drops in the timeline (v2.2)", () => {
-    // v2.2: page balances no longer reduce gear effectiveNeed. Two
-    // players with identical BiS plans should split the week-1 drops
-    // even if one of them already has Floor-1 pages stockpiled. The
-    // simulator's deterministic tiebreaker decides who wins each
-    // individual drop; what matters is that PageRich isn't excluded.
+  it("page-rich players get fewer drops in week 1 via simulated purchase (v2.2.1)", () => {
+    // v2.2.1: `computePurchasedSlots` simulates self-purchase per
+    // (player, floor) per week. PageRich starts with 9 Floor-1
+    // pages — after the week-1 kill that's 10, enough to buy
+    // floor(10/3) = 3 accessories. Of their 4 needed slots
+    // (Earring, Necklace, Bracelet, Ring1), the first 3 in
+    // floor-item order are simulated as bought, leaving only
+    // Ring1 in the drop pool. PagePoor needs all 4, has 0 pages,
+    // and outscores PageRich on every other item. The week-1
+    // drops should therefore mostly land on PagePoor.
     const players = [
       makePlayer({
         id: 1,
@@ -240,9 +244,12 @@ describe("simulateLootTimeline", () => {
     const week1 = result[0]?.weeks[0];
     expect(week1).toBeDefined();
     const week1Recipients = week1?.drops.map((d) => d.recipientName) ?? [];
-    // Both players appear in week 1 — pages don't lock PageRich out.
-    expect(week1Recipients).toContain("PageRich");
-    expect(week1Recipients).toContain("PagePoor");
+    // PagePoor wins Earring/Necklace/Bracelet because PageRich is
+    // assumed to have bought them. The Ring drop ties on score and
+    // tiebreakers settle it, but PagePoor still wins the bulk of
+    // the week regardless.
+    const poorWins = week1Recipients.filter((n) => n === "PagePoor").length;
+    expect(poorWins).toBeGreaterThanOrEqual(3);
   });
 
   it("untracked floors are listed but never assign a recipient", () => {
@@ -399,14 +406,16 @@ describe("plan ↔ track parity", () => {
     expect(w1).toEqual(["Solo", "Solo", "Solo", "Solo"]);
   });
 
-  it("default behaviour (no alreadyKilledFloors) increments pages on the first week", () => {
+  it("page-aware purchase simulation skips a player whose pages can buy the slot (v2.2.1)", () => {
     // Backwards-compat guarantee: when callers don't pass
     // `alreadyKilledFloors` (the existing test suite shape), the
     // simulator behaves as before — `incrementPages` runs on every
-    // iteration. v2.2: pages no longer reduce gear `effectiveNeed`,
-    // so the player is recommended for the drop regardless of their
-    // page balance. Pre-v2.2 the same setup hit `effectiveNeed = 0`
-    // and got skipped; this test now asserts the inverse.
+    // iteration. v2.2.1: `computePurchasedSlots` simulates a
+    // self-purchase per (player, floor) per week, so a Loner who
+    // ends week 1 with 3 Floor-1 pages (= 1 buyable accessory)
+    // and exactly one needed Earring slot is assumed to have
+    // bought it themselves; the algorithm therefore returns no
+    // recommendation for the drop.
     const tier = makeTier();
     const players: PlayerSnapshot[] = [
       makePlayer({
@@ -415,7 +424,7 @@ describe("plan ↔ track parity", () => {
         gearRole: "tank",
         bisDesired: { Earring: "Savage" },
         bisCurrent: { Earring: "Crafted" },
-        pages: { 1: 2 }, // would have been "self-buyable" pre-v2.2
+        pages: { 1: 2 }, // After +1 = 3 → buyPower = 1
       }),
     ];
     const plan = simulateLootTimeline(players, tier, {
@@ -430,8 +439,8 @@ describe("plan ↔ track parity", () => {
       ],
     });
     const earring = plan[0]?.weeks[0]?.drops[0];
-    // v2.2: pages don't reduce gear effectiveNeed, so the player is
-    // still recommended for the drop.
-    expect(earring?.recipientName).toBe("Loner");
+    // The single player's effective need is reduced by the
+    // simulated purchase to 0, so they aren't recommended.
+    expect(earring?.recipientName).toBeNull();
   });
 });

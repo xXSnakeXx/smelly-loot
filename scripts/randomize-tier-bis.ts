@@ -85,9 +85,7 @@ async function main(): Promise<void> {
   const arg = process.argv[2];
   const tierId = arg ? Number.parseInt(arg, 10) : Number.NaN;
   if (!Number.isInteger(tierId) || tierId <= 0) {
-    console.error(
-      "Usage: pnpm tsx scripts/randomize-tier-bis.ts <tier_id>",
-    );
+    console.error("Usage: pnpm tsx scripts/randomize-tier-bis.ts <tier_id>");
     process.exit(1);
   }
 
