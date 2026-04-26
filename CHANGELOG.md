@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-04-26
+
+### Changed
+
+- **Extreme + Crafted iLv defaults shifted up.** The team's
+  reading of where these gear tiers sit relative to the Savage cap
+  has changed:
+  - Extreme: `max - 20` → `max - 15` (now between Catchup/Tome
+    and Crafted/Relic)
+  - Crafted: `max - 25` → `max - 20` (now shares iLv with Relic)
+
+  Heavyweight (max = 790) therefore reports Extreme 775 / Crafted
+  770 instead of 770 / 765. Migration `0004` updates existing
+  tiers whose stored values still match the previous defaults;
+  customised iLvs are preserved.
+
 ## [2.1.0] - 2026-04-26
 
 ### Added
