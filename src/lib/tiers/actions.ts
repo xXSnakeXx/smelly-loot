@@ -7,11 +7,13 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCurrentTeam } from "@/lib/db/queries";
 import {
+  bisChoice,
   floor,
   player as playerTable,
   tierBuyCost,
   tier as tierTable,
 } from "@/lib/db/schema";
+import { defaultBisChoicesForJob } from "@/lib/ffxiv/bis-defaults";
 import { deriveSourceIlvs } from "@/lib/ffxiv/slots";
 import { DEFAULT_BUY_COSTS, DEFAULT_FLOORS } from "@/lib/ffxiv/tier-defaults";
 
@@ -205,17 +207,40 @@ export async function createTierAction(
       .orderBy(playerTable.sortOrder, playerTable.id);
 
     if (previousRoster.length > 0) {
-      await db.insert(playerTable).values(
-        previousRoster.map((p) => ({
-          tierId: newTierId,
-          name: p.name,
-          mainJob: p.mainJob,
-          altJobs: p.altJobs,
-          gearLink: p.gearLink ?? null,
-          notes: p.notes ?? null,
-          sortOrder: p.sortOrder,
-        })),
-      );
+      const newPlayerIds = await db
+        .insert(playerTable)
+        .values(
+          previousRoster.map((p) => ({
+            tierId: newTierId,
+            name: p.name,
+            mainJob: p.mainJob,
+            altJobs: p.altJobs,
+            gearLink: p.gearLink ?? null,
+            notes: p.notes ?? null,
+            sortOrder: p.sortOrder,
+          })),
+        )
+        .returning({ id: playerTable.id, mainJob: playerTable.mainJob });
+
+      // Phase 2.2 — Stamp the default BiS rows on each newly-copied
+      // player. The previous-tier BiS plans deliberately don't
+      // carry over (a new tier means a new max iLv, the team
+      // replans), but we DO want the table to render with sensible
+      // defaults instead of empty rows. The 12-slot Crafted /
+      // NotPlanned baseline matches what `createPlayerAction` does
+      // for fresh players.
+      if (newPlayerIds.length > 0) {
+        await db.insert(bisChoice).values(
+          newPlayerIds.flatMap((p) =>
+            defaultBisChoicesForJob(p.mainJob).map((d) => ({
+              playerId: p.id,
+              slot: d.slot,
+              desiredSource: d.desiredSource,
+              currentSource: d.currentSource,
+            })),
+          ),
+        );
+      }
     }
   }
 
