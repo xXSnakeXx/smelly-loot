@@ -91,14 +91,28 @@ export default async function TierDetailPage({
       ])
     : [[], []];
 
-  // Plan tab: simulate weeks `currentWeek + 1 ... currentWeek + N`.
-  // If no week exists yet we still render a forward plan starting
-  // from week 1, which is useful for tier rollover before the first
-  // boss has been killed.
-  const startingWeekNumber = currentWeek ? currentWeek.weekNumber + 1 : 1;
+  // Plan tab: simulate the active week + the next `DEFAULT_WEEKS_AHEAD - 1`
+  // weeks. Starting at the active week (rather than `currentWeek + 1`) and
+  // marking the floors that have already been killed lets the simulator
+  // score the same snapshot Track scores against — so Plan-Week-1 for an
+  // active drop matches Track's recommendation for that exact drop. If
+  // there's no current week yet (a freshly-rolled tier), we just start at
+  // week 1 with no already-killed floors so the simulator behaves as a
+  // pure forward forecast.
+  const startingWeekNumber = currentWeek ? currentWeek.weekNumber : 1;
+  const alreadyKilledFloorNumbers = currentWeek
+    ? Array.from(
+        new Set(
+          kills
+            .map((k) => floors.find((f) => f.id === k.floorId)?.number)
+            .filter((n): n is number => typeof n === "number"),
+        ),
+      )
+    : [];
   const timelines = simulateLootTimeline(snapshots, tierSnapshot, {
     startingWeekNumber,
     weeksAhead: DEFAULT_WEEKS_AHEAD,
+    alreadyKilledFloors: alreadyKilledFloorNumbers,
     floors: floors.map((f) => ({
       floorNumber: f.number,
       itemKeys: f.drops as string[] as ItemKey[],

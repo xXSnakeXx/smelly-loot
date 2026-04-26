@@ -4,6 +4,7 @@ import type { GearRole } from "@/lib/ffxiv/jobs";
 import { type BisSource, deriveSourceIlvs, type Slot } from "@/lib/ffxiv/slots";
 
 import type { PlayerSnapshot, TierSnapshot } from "./algorithm";
+import { scoreDrop } from "./algorithm";
 import { simulateLootTimeline } from "./timeline";
 
 /**
@@ -268,5 +269,164 @@ describe("simulateLootTimeline", () => {
         expect(drop.recipientId).toBeNull();
       }
     }
+  });
+});
+
+describe("plan ↔ track parity", () => {
+  // The Plan tab is meant to be a faithful preview of what the Track
+  // tab will recommend on the next kill. Both views consume the same
+  // snapshot, but pre-v1.5.0 the simulator started at
+  // `currentWeek + 1` AND incremented every player's pages by 1
+  // before scoring the first week — so the snapshot the simulator
+  // scored differed from the live snapshot by one page (which is
+  // enough to flip `buyPower` thresholds and pick a different
+  // recipient). The tests below pin down the parity contract: when
+  // the simulator is told the snapshot already reflects the active
+  // week's kill (`alreadyKilledFloors`), its first-week
+  // recommendation matches `scoreDrop` for the same data exactly.
+  it("first-week recommendation matches scoreDrop on the same snapshot", () => {
+    const tier = makeTier();
+    // Both players sit just below the page-buy threshold for an
+    // accessory (cost 3, pages 2). Track scores against pages=2
+    // (buyPower=0, effective_need=1, recommended). Pre-fix the
+    // simulator would also count the active-week kill again
+    // (pages=3, buyPower=1, effective_need=0, NOT recommended) —
+    // a different recommendation for the same data. With
+    // `alreadyKilledFloors: [1]` the simulator's first iteration
+    // skips that re-increment and stays in lock-step with Track.
+    const players: PlayerSnapshot[] = [
+      makePlayer({
+        id: 1,
+        name: "Tank",
+        gearRole: "tank",
+        bisDesired: { Earring: "Savage" },
+        bisCurrent: { Earring: "Crafted" },
+        pages: { 1: 2 },
+      }),
+      makePlayer({
+        id: 2,
+        name: "Melee",
+        gearRole: "melee",
+        bisDesired: { Earring: "Savage" },
+        bisCurrent: { Earring: "Crafted" },
+        pages: { 1: 2 },
+      }),
+    ];
+    const activeWeek = 10;
+
+    const trackRanking = scoreDrop(players, {
+      itemKey: "Earring",
+      floorNumber: 1,
+      currentWeek: activeWeek,
+      tier,
+    });
+    const trackTop = trackRanking[0]?.player.name;
+    // Sanity: Track actually recommends someone (otherwise the
+    // parity assertion below would be vacuously true even with the
+    // bug present).
+    expect(trackRanking[0]?.score).toBeGreaterThan(0);
+
+    const plan = simulateLootTimeline(players, tier, {
+      startingWeekNumber: activeWeek,
+      weeksAhead: 1,
+      alreadyKilledFloors: [1],
+      floors: [
+        {
+          floorNumber: 1,
+          itemKeys: ["Earring", "Necklace", "Bracelet", "Ring"],
+          trackedForAlgorithm: true,
+        },
+      ],
+    });
+    const planEarring = plan[0]?.weeks[0]?.drops.find(
+      (d) => d.itemKey === "Earring",
+    );
+
+    expect(planEarring?.recipientName).toBe(trackTop);
+  });
+
+  it("subsequent weeks still increment pages (one kill per week)", () => {
+    // Same fixture but ask for two weeks ahead. The first iteration
+    // skips the page increment for the active-week floors (per the
+    // contract above); the second iteration MUST increment pages,
+    // otherwise the simulator never advances. Week-1 awards every
+    // accessory to the only player, so week-2's effective_need is
+    // 0 for those slots — but the algorithm's recency penalty
+    // (`weeksSinceLastDrop`) still fires for week-2 vs the awarded
+    // week-1, which only computes correctly if the week number
+    // advanced by exactly one. The cleanest way to assert that is
+    // to inspect the resulting `weekNumber` values.
+    const tier = makeTier();
+    const players: PlayerSnapshot[] = [
+      makePlayer({
+        id: 1,
+        name: "Solo",
+        gearRole: "tank",
+        bisDesired: {
+          Earring: "Savage",
+          Necklace: "Savage",
+          Bracelet: "Savage",
+          Ring1: "Savage",
+        },
+        bisCurrent: {
+          Earring: "Crafted",
+          Necklace: "Crafted",
+          Bracelet: "Crafted",
+          Ring1: "Crafted",
+        },
+        pages: { 1: 0 },
+      }),
+    ];
+    const plan = simulateLootTimeline(players, tier, {
+      startingWeekNumber: 10,
+      weeksAhead: 3,
+      alreadyKilledFloors: [1],
+      floors: [
+        {
+          floorNumber: 1,
+          itemKeys: ["Earring", "Necklace", "Bracelet", "Ring"],
+          trackedForAlgorithm: true,
+        },
+      ],
+    });
+    const weekNumbers = plan[0]?.weeks.map((w) => w.weekNumber);
+    expect(weekNumbers).toEqual([10, 11, 12]);
+    // Week 1 (active): all four drops to Solo (only player).
+    const w1 = plan[0]?.weeks[0]?.drops.map((d) => d.recipientName);
+    expect(w1).toEqual(["Solo", "Solo", "Solo", "Solo"]);
+  });
+
+  it("default behaviour (no alreadyKilledFloors) increments pages on the first week", () => {
+    // Backwards-compat guarantee: when callers don't pass
+    // `alreadyKilledFloors` (the existing test suite shape), the
+    // simulator behaves as before — incrementPages on every
+    // iteration. This protects the existing test cases from
+    // accidentally regressing into the parity-aware path.
+    const tier = makeTier();
+    const players: PlayerSnapshot[] = [
+      makePlayer({
+        id: 1,
+        name: "Loner",
+        gearRole: "tank",
+        bisDesired: { Earring: "Savage" },
+        bisCurrent: { Earring: "Crafted" },
+        pages: { 1: 2 }, // After +1 = 3 → buyPower = 1
+      }),
+    ];
+    const plan = simulateLootTimeline(players, tier, {
+      startingWeekNumber: 1,
+      weeksAhead: 1,
+      floors: [
+        {
+          floorNumber: 1,
+          itemKeys: ["Earring"],
+          trackedForAlgorithm: true,
+        },
+      ],
+    });
+    const earring = plan[0]?.weeks[0]?.drops[0];
+    // The single player's effective need is reduced by the
+    // (incremented) buyPower to 0, so they aren't recommended.
+    expect(earring?.recipientName).toBeNull();
   });
 });

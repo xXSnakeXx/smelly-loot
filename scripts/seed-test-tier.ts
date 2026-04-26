@@ -227,8 +227,7 @@ async function main(): Promise<void> {
           ORDER BY sort_order, id`,
     args: [sourceTierId],
   });
-  const newPlayerIds: Array<{ id: number; name: string; mainJob: string }> =
-    [];
+  const newPlayerIds: Array<{ id: number; name: string; mainJob: string }> = [];
   for (const row of sourceRoster.rows) {
     const inserted = await client.execute({
       sql: `INSERT INTO player (

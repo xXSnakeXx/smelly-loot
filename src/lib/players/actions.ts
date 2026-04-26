@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { player } from "@/lib/db/schema";
+import { bisChoice, player } from "@/lib/db/schema";
+import { defaultBisChoicesForJob } from "@/lib/ffxiv/bis-defaults";
 
 import {
   playerCreateSchema,
@@ -61,15 +62,38 @@ export async function createPlayerAction(
     .where(eq(player.tierId, parsed.data.tierId));
   const nextOrder = (orderRow[0]?.nextOrder ?? 0) + 1;
 
-  await db.insert(player).values({
-    tierId: parsed.data.tierId,
-    name: parsed.data.name,
-    mainJob: parsed.data.mainJob,
-    altJobs: parsed.data.altJobs,
-    gearLink: parsed.data.gearLink ?? null,
-    notes: parsed.data.notes ?? null,
-    sortOrder: nextOrder,
-  });
+  const inserted = await db
+    .insert(player)
+    .values({
+      tierId: parsed.data.tierId,
+      name: parsed.data.name,
+      mainJob: parsed.data.mainJob,
+      altJobs: parsed.data.altJobs,
+      gearLink: parsed.data.gearLink ?? null,
+      notes: parsed.data.notes ?? null,
+      sortOrder: nextOrder,
+    })
+    .returning({ id: player.id });
+  const newPlayerId = inserted[0]?.id;
+
+  // Phase 2.2 — Tier-onboarding default. Every new player row gets
+  // a 12-slot starter BiS plan with `currentSource = "Crafted"` so
+  // the BiS table is meaningful immediately and the algorithm has
+  // a non-trivial gear-gap to work with from the first scoring
+  // call. Offhand is `NotPlanned` for non-PLDs (only paladins
+  // actually equip an offhand). The user fills in the
+  // `desiredSource` per slot afterwards via the BiS table.
+  if (newPlayerId !== undefined) {
+    const defaults = defaultBisChoicesForJob(parsed.data.mainJob);
+    await db.insert(bisChoice).values(
+      defaults.map((d) => ({
+        playerId: newPlayerId,
+        slot: d.slot,
+        desiredSource: d.desiredSource,
+        currentSource: d.currentSource,
+      })),
+    );
+  }
 
   // Revalidate every tier-scoped surface — players appear in the
   // tier's Players tab, the dashboard's tier card stat, and the

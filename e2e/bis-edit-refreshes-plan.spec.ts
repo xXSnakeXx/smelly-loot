@@ -28,9 +28,7 @@ import { expect, test } from "@playwright/test";
  * test reliably since the Plan would either show Fara (stale) OR
  * produce a server error.
  */
-test("BiS edit refreshes the Plan tab on the active tier", async ({
-  page,
-}) => {
+test("BiS edit refreshes the Plan tab on the active tier", async ({ page }) => {
   // 1. Land on the dashboard, jump to the first tier card → Players.
   await page.goto("/en");
   const firstTier = page.locator('a[href*="/tiers/"]').first();
