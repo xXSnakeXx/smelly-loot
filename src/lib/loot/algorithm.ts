@@ -198,6 +198,26 @@ function scoreGear(
   const dropSource = context.drop_source ?? "Savage";
   const slotsForItem = SLOTS_BY_ITEM_KEY[context.itemKey as GearItemKey];
   const cost = context.tier.buyCostByItem.get(context.itemKey);
+
+  // `buyPower` is computed and reported in the breakdown so the UI
+  // can still surface it as context, but as of v2.2 it is *not*
+  // subtracted from `effectiveNeed` for gear drops. Two reasons:
+  //
+  //   1. The previous behaviour double-counted page balances across
+  //      a player's multiple needed items: a player with 3 Floor-1
+  //      pages who needed three different Floor-1 accessories would
+  //      see `buyPower = 1` reapplied to each item independently,
+  //      so each one's `effectiveNeed` dropped to 0 even though they
+  //      could only buy *one* accessory total.
+  //   2. Pages on Floors 2/3 are spent primarily on the Glaze /
+  //      Twine vendors (TomeUp upgrades), not on gear pieces, so
+  //      reducing gear-drop priority by Floor-2/3 pages mis-models
+  //      the team's actual page economy.
+  //
+  // The simpler correct rule is "drops are free; pages are a
+  // separate purchase track". The `buyPower` factor still applies
+  // to material drops in `scoreMaterial` (where pages *are* the
+  // canonical sink).
   const buyPower = cost
     ? Math.floor((player.pages.get(cost.floor) ?? 0) / cost.cost)
     : 0;
@@ -214,7 +234,7 @@ function scoreGear(
       (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) === dropSource,
   ).length;
 
-  const effectiveNeed = Math.max(0, slotsWanting - slotsAlready - buyPower);
+  const effectiveNeed = Math.max(0, slotsWanting - slotsAlready);
 
   const desiredIlv = ilvForSource(context.tier, dropSource) ?? 0;
   const currentIlvOfFirstNeedingSlot = slotsForItem

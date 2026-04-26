@@ -149,9 +149,18 @@ describe("scoreDrop — gear", () => {
     expect(only?.breakdown.effectiveNeed).toBe(0);
   });
 
-  it("deprioritises players who can self-buy with pages (Topic 2)", () => {
-    // Both players need an Earring; one has 6 HW Edition I pages
-    // (enough to buy 2 accessories) so their effective_need drops to 0.
+  it("does not deprioritise page-rich players for gear drops (v2.2)", () => {
+    // v2.2 — page balances no longer reduce `effectiveNeed` for gear
+    // drops. The previous behaviour double-counted pages across a
+    // player's multiple needed items (3 pages, 3 needed accessories
+    // → each item's effective_need dropped to 0 independently even
+    // though only one was actually buyable). The simpler correct
+    // rule is "drops are free; pages are a separate purchase track".
+    //
+    // Both players still show their `buyPower` in the breakdown so
+    // the UI can surface it for context — it just doesn't move the
+    // score. Tiebreakers (last-drop week, deterministic hash) settle
+    // the ordering when scores collide.
     const players = [
       makePlayer({
         id: 1,
@@ -170,13 +179,48 @@ describe("scoreDrop — gear", () => {
         pages: { 1: 2 },
       }),
     ];
-    const [first] = scoreDrop(players, context());
-    expect(first?.player.name).toBe("PagePoor");
-    const rich = scoreDrop(players, context()).find(
-      (s) => s.player.name === "PageRich",
-    );
+    const ranking = scoreDrop(players, context());
+    expect(ranking[0]?.score).toBe(ranking[1]?.score);
+    expect(ranking[0]?.breakdown.effectiveNeed).toBe(1);
+    expect(ranking[1]?.breakdown.effectiveNeed).toBe(1);
+    const rich = ranking.find((s) => s.player.name === "PageRich");
     expect(rich?.breakdown.buyPower).toBe(2);
-    expect(rich?.score).toBe(0);
+    const poor = ranking.find((s) => s.player.name === "PagePoor");
+    expect(poor?.breakdown.buyPower).toBe(0);
+  });
+
+  it("keeps gear scores positive across multiple needed items (no buyPower double-count)", () => {
+    // Regression for the Fara case: player has 3 Floor-1 pages and
+    // wants 3 different Floor-1 accessories (Earring, Necklace,
+    // Ring1). Pre-v2.2 each item's `effectiveNeed` dropped to 0 via
+    // `slotsWanting - buyPower = 1 - 1`, so the algorithm refused to
+    // recommend any of them — even though the player could only
+    // ever buy *one* accessory with 3 pages.
+    //
+    // v2.2: `effectiveNeed` ignores buyPower for gear, so all three
+    // items still score positive and the player keeps competing for
+    // them on the Plan tab.
+    const fara = makePlayer({
+      id: 1,
+      name: "Fara",
+      gearRole: "tank",
+      bisDesired: {
+        Earring: "Savage",
+        Necklace: "Savage",
+        Ring1: "Savage",
+      },
+      bisCurrent: {
+        Earring: "NotPlanned",
+        Necklace: "NotPlanned",
+        Ring1: "NotPlanned",
+      },
+      pages: { 1: 3 }, // exactly enough to buy one accessory
+    });
+    for (const itemKey of ["Earring", "Necklace", "Ring"] as const) {
+      const [only] = scoreDrop([fara], context({ itemKey }));
+      expect(only?.breakdown.effectiveNeed).toBeGreaterThan(0);
+      expect(only?.score).toBeGreaterThan(0);
+    }
   });
 
   it("applies Topic 1 role weights — melee 1.10 beats phys-range 1.05 beats caster 1.00", () => {
