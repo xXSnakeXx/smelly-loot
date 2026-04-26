@@ -7,6 +7,39 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-04-26
+
+### Changed
+
+- **Page-aware purchase simulation for gear scoring.** Walks back
+  the v2.2 "pages are completely separate" model — that fixed the
+  Fara-style page double-counting but introduced a new bug where
+  page-rich players still got drop recommendations they could
+  trivially have bought.
+
+  v2.2.1 pre-computes a per-(player, floor) set of "purchased
+  slots" via `computePurchasedSlots`: pages divided by the floor's
+  per-item cost gives the number of slots covered by self-
+  purchase, picked in deterministic floor-item order. Any
+  specific item's `effectiveNeed` only counts slots that are NOT
+  in that set.
+
+  Behaviour matrix (Floor 1, cost 3):
+  - 9 pages, 1 needed item → 1 slot purchased → no drop
+    recommendation (player buys it themselves).
+  - 0 pages, 1 needed item → 0 slots purchased → drop is
+    recommended.
+  - 3 pages, 3 needed items → 1 slot purchased (first in floor
+    order, e.g. Earring), the other two (Necklace, Ring) keep
+    `effectiveNeed = 1` and surface as drops.
+
+  The simulation respects FFXIV pricing within a floor (Floor 1
+  gear all 3 pages, Floor 2 all 4, Floor 3 all 6). Materials are
+  filtered out — they're handled by `scoreMaterial`, where pages
+  are still the canonical sink (a page-rich player legitimately
+  needs fewer Glaze / Twine drops because they can vendor-buy
+  them).
+
 ## [2.2.0] - 2026-04-26
 
 ### Changed
