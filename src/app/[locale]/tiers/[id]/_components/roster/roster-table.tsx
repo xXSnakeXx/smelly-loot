@@ -63,7 +63,7 @@ export function RosterTable({ members, tierId }: RosterTableProps) {
             <TableRow key={player.id}>
               <TableCell className="font-medium">
                 <Link
-                  href={`/team/${player.id}`}
+                  href={`/tiers/${tierId}/players/${player.id}`}
                   className="underline-offset-4 hover:underline"
                 >
                   {player.name}
