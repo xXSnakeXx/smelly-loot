@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-04-26
+
+### Fixed
+
+- **BiS edits and page-adjust saves now invalidate every tier-scoped
+  surface.** Both Server Actions previously revalidated only the
+  narrow per-player route they originated from (`/players/[id]`,
+  plus a stale `/loot` in the page-adjust case — that path has
+  been a redirect since v1.2.0). Both inputs feed the algorithm's
+  `effective_need` / current-source lookups the Plan tab consumes,
+  so a BiS edit in one browser tab left the Plan tab in another
+  tab showing the pre-edit recommendation until the next hard
+  navigation. Both actions now call
+  `revalidatePath("/", "layout")` to match the player CRUD
+  actions, which invalidates every tier-scoped page in one
+  round-trip.
+
+A new Playwright spec (`e2e/bis-edit-refreshes-plan.spec.ts`)
+locks the auto-refresh in: it edits a player's Weapon desired
+source to `NotPlanned` and asserts the Plan tab no longer routes
+Weapon drops to that player.
+
 ## [1.4.1] - 2026-04-26
 
 ### Added
