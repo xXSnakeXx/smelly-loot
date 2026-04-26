@@ -64,6 +64,30 @@
     }
   },
   "team": {
+    "roster": {
+      "title": "Team-Roster",
+      "description": "Pflege die Stammdaten der Raider — Name, Main-Job, Alt-Jobs, Gear-Link. Tier-spezifische Daten (BiS, Pages, Loot-Historie) leben pro Tier auf der Tier-Detailseite.",
+      "addCta": "Spieler anlegen",
+      "empty": {
+        "title": "Noch keine Spieler im Team.",
+        "description": "Lege deine Raider an. Sobald sie im Team sind, kannst du sie pro Tier zum Roster hinzufügen.",
+        "cta": "Ersten Spieler anlegen",
+        "noTeamPlayers": "Lege erst Spieler im Team-Roster an, bevor du sie diesem Tier zuweist."
+      }
+    },
+    "player": {
+      "back": "Zurück zum Team-Roster",
+      "altJobs": "Alt-Jobs",
+      "gearLink": "Gear-Set-Link",
+      "editIdentity": "Stammdaten bearbeiten",
+      "tiers": {
+        "title": "Tier-spezifische Gear-Pläne",
+        "description": "Jeder Tier hat seinen eigenen BiS-Plan, Pages-Bestand und Loot-Historie, weil sich der Max-iLv unterscheidet. Wähle einen Tier, um den Plan dieses Spielers darin zu öffnen.",
+        "empty": "Dieser Spieler ist noch in keinem Tier. Füge ihn auf der Roster-Tab im Tier-Detail hinzu.",
+        "active": "Aktiv",
+        "archived": "Archiviert"
+      }
+    },
     "settings": {
       "title": "Team-Einstellungen",
       "description": "Benenne den Static um oder ändere die Standardsprache der UI.",
@@ -77,6 +101,34 @@
       },
       "save": "Speichern",
       "savedToast": "Team-Einstellungen gespeichert."
+    }
+  },
+  "roster": {
+    "table": {
+      "name": "Name",
+      "job": "Main-Job",
+      "altJobs": "Alt-Jobs",
+      "actions": "Aktionen",
+      "removeFromTier": "Aus Tier entfernen"
+    },
+    "addCta": "Spieler hinzufügen",
+    "empty": {
+      "title": "Noch niemand im Tier-Roster.",
+      "description": "Wähle aus dem Team-Roster, wer in diesem Tier mitraidet. Jeder hinzugefügte Spieler bekommt eine BiS-Tabelle mit Crafted-Currents.",
+      "cta": "Spieler hinzufügen",
+      "noTeamPlayers": "Lege erst Spieler im Team-Roster an, bevor du sie diesem Tier zuweist."
+    },
+    "addDialog": {
+      "title": "Spieler zum Tier hinzufügen",
+      "description": "Wähle einen oder mehrere Team-Spieler. Jeder bekommt eine 12-slot BiS-Tabelle mit current=Crafted und desired=NotPlanned.",
+      "submit": "{count} hinzufügen",
+      "cancel": "Abbrechen"
+    },
+    "toasts": {
+      "added": "{count} Spieler zum Tier hinzugefügt.",
+      "addError": "{count} Spieler konnten nicht hinzugefügt werden.",
+      "removed": "{name} aus dem Tier entfernt.",
+      "removeError": "Entfernen fehlgeschlagen — bitte erneut versuchen."
     }
   },
   "players": {
@@ -139,6 +191,7 @@
     },
     "detail": {
       "back": "Zurück zu den Spielern",
+      "backToTier": "Zurück zu {tierName}",
       "noBis": "Noch kein BiS-Plan — wähle unten pro Slot die gewünschte Quelle, um anzufangen.",
       "gearLink": "Gear-Set-Link"
     }

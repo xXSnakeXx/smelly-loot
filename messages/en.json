@@ -77,6 +77,19 @@
         "noTeamPlayers": "Add players to the team roster first, then assign them to this tier."
       }
     },
+    "player": {
+      "back": "Back to team roster",
+      "altJobs": "Alt jobs",
+      "gearLink": "Gear-set link",
+      "editIdentity": "Edit identity",
+      "tiers": {
+        "title": "Tier-specific gear plans",
+        "description": "Each tier has its own BiS plan, pages balance, and loot history because the max iLv differs. Pick a tier to open this player's plan for it.",
+        "empty": "This player isn't enrolled in any tier yet. Add them to a tier on the tier-detail Roster tab.",
+        "active": "Active",
+        "archived": "Archived"
+      }
+    },
     "settings": {
       "title": "Team settings",
       "description": "Rename the static or change the default UI language.",
@@ -180,6 +193,7 @@
     },
     "detail": {
       "back": "Back to players",
+      "backToTier": "Back to {tierName}",
       "noBis": "No BiS plan recorded yet — set the desired source per slot below to get started.",
       "gearLink": "Gear-set link"
     }
