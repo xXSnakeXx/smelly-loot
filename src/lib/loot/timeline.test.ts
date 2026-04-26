@@ -406,16 +406,16 @@ describe("plan ↔ track parity", () => {
     expect(w1).toEqual(["Solo", "Solo", "Solo", "Solo"]);
   });
 
-  it("page-aware purchase simulation skips a player whose pages can buy the slot (v2.2.1)", () => {
-    // Backwards-compat guarantee: when callers don't pass
-    // `alreadyKilledFloors` (the existing test suite shape), the
-    // simulator behaves as before — `incrementPages` runs on every
-    // iteration. v2.2.1: `computePurchasedSlots` simulates a
-    // self-purchase per (player, floor) per week, so a Loner who
-    // ends week 1 with 3 Floor-1 pages (= 1 buyable accessory)
-    // and exactly one needed Earring slot is assumed to have
-    // bought it themselves; the algorithm therefore returns no
-    // recommendation for the drop.
+  it("page-aware purchase simulation discounts but doesn't skip the only candidate (v2.2.2)", () => {
+    // v2.2.2: `computePurchasedSlots` simulates a self-purchase per
+    // (player, floor) per week — but unlike v2.2.1 the slot
+    // contributes 0.5 to effective_need rather than 0. A drop
+    // therefore still gets recommended (the team can't guarantee
+    // every player will actually spend their pages on this slot;
+    // someone has to take the drop if it falls). Loner ends week 1
+    // with 3 Floor-1 pages — enough to buy the Earring — and is
+    // the only candidate, so the algorithm hands them the drop at
+    // a discounted score.
     const tier = makeTier();
     const players: PlayerSnapshot[] = [
       makePlayer({
@@ -439,8 +439,8 @@ describe("plan ↔ track parity", () => {
       ],
     });
     const earring = plan[0]?.weeks[0]?.drops[0];
-    // The single player's effective need is reduced by the
-    // simulated purchase to 0, so they aren't recommended.
-    expect(earring?.recipientName).toBeNull();
+    expect(earring?.recipientName).toBe("Loner");
+    // Score is positive but reflects the 0.5 effective-need discount.
+    expect((earring?.score ?? 0) > 0).toBe(true);
   });
 });

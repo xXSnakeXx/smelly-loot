@@ -149,13 +149,16 @@ describe("scoreDrop — gear", () => {
     expect(only?.breakdown.effectiveNeed).toBe(0);
   });
 
-  it("deprioritises page-rich players via simulated self-purchase (v2.2.1)", () => {
-    // v2.2.1 — page balances are reapplied to gear scoring through
-    // a per-(player, floor) "purchased slots" simulation. PageRich
-    // has 6 Floor-1 pages (= 2 buyable accessories) and exactly
-    // one needed Earring slot, so the simulator pretends they've
-    // already bought Earring and `effectiveNeed` drops to 0.
-    // PagePoor has 0 pages and still legitimately needs the drop.
+  it("deprioritises page-rich players via score discount (v2.2.2)", () => {
+    // v2.2.2 — `computePurchasedSlots` still simulates a
+    // self-purchase, but instead of zeroing the slot's
+    // contribution to `effectiveNeed` it discounts it by 50%. A
+    // page-rich player with one needed Earring slot and the slot
+    // in their purchased set still scores positive (effectiveNeed
+    // = 0.5), but ranks below a page-poor competitor with raw
+    // unmet need = 1.0. The drop therefore always gets a
+    // recommendation, even when every potential recipient could
+    // have bought the slot themselves.
     const players = [
       makePlayer({
         id: 1,
@@ -179,19 +182,20 @@ describe("scoreDrop — gear", () => {
     expect(ranking[0]?.breakdown.effectiveNeed).toBe(1);
     expect(ranking[0]?.score).toBeGreaterThan(0);
     const rich = ranking.find((s) => s.player.name === "PageRich");
-    expect(rich?.breakdown.effectiveNeed).toBe(0);
-    expect(rich?.score).toBe(0);
-    // buyPower stays in the breakdown for UI surfacing.
+    expect(rich?.breakdown.effectiveNeed).toBe(0.5);
+    expect(rich?.score).toBeGreaterThan(0);
+    // PagePoor must still outscore PageRich.
+    expect(ranking[0]?.score).toBeGreaterThan(rich?.score ?? 0);
     expect(rich?.breakdown.buyPower).toBe(2);
   });
 
   it("only counts buyPower against actually-buyable need (no double-counting)", () => {
     // Regression for the Fara case: 3 Floor-1 pages = exactly one
     // buyable accessory, while the player wants three different
-    // accessories. The first item in floor-item order (Earring) is
-    // simulated as bought, and the remaining two (Necklace, Ring)
-    // keep `effectiveNeed = 1` so they still surface as drop
-    // candidates.
+    // accessories. The first item in slot-canonical order (Earring)
+    // is simulated as bought and gets the 50% score discount; the
+    // other two (Necklace, Ring) keep `effectiveNeed = 1` and
+    // surface at full score.
     const fara = makePlayer({
       id: 1,
       name: "Fara",
@@ -210,12 +214,13 @@ describe("scoreDrop — gear", () => {
     });
 
     const earring = scoreDrop([fara], context({ itemKey: "Earring" }))[0];
-    expect(earring?.breakdown.effectiveNeed).toBe(0);
-    expect(earring?.score).toBe(0);
+    expect(earring?.breakdown.effectiveNeed).toBe(0.5);
+    expect(earring?.score).toBeGreaterThan(0);
 
     const necklace = scoreDrop([fara], context({ itemKey: "Necklace" }))[0];
     expect(necklace?.breakdown.effectiveNeed).toBe(1);
     expect(necklace?.score).toBeGreaterThan(0);
+    expect(necklace?.score).toBeGreaterThan(earring?.score ?? 0);
 
     const ring = scoreDrop([fara], context({ itemKey: "Ring" }))[0];
     expect(ring?.breakdown.effectiveNeed).toBe(1);
