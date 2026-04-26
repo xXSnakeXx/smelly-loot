@@ -201,10 +201,12 @@ describe("simulateLootTimeline", () => {
     expect(new Set(recipients).has("Rei")).toBe(true);
   });
 
-  it("page-aware timeline: a player who can self-buy is skipped early on", () => {
-    // PageRich starts with 9 floor-1 pages — enough to buy 3
-    // accessories — so the algorithm shouldn't recommend them for
-    // their first three needed drops in any of the early weeks.
+  it("page balances do not deprioritise gear drops in the timeline (v2.2)", () => {
+    // v2.2: page balances no longer reduce gear effectiveNeed. Two
+    // players with identical BiS plans should split the week-1 drops
+    // even if one of them already has Floor-1 pages stockpiled. The
+    // simulator's deterministic tiebreaker decides who wins each
+    // individual drop; what matters is that PageRich isn't excluded.
     const players = [
       makePlayer({
         id: 1,
@@ -237,9 +239,10 @@ describe("simulateLootTimeline", () => {
     });
     const week1 = result[0]?.weeks[0];
     expect(week1).toBeDefined();
-    // PagePoor should win all four week-1 drops.
     const week1Recipients = week1?.drops.map((d) => d.recipientName) ?? [];
-    expect(week1Recipients.every((n) => n === "PagePoor")).toBe(true);
+    // Both players appear in week 1 — pages don't lock PageRich out.
+    expect(week1Recipients).toContain("PageRich");
+    expect(week1Recipients).toContain("PagePoor");
   });
 
   it("untracked floors are listed but never assign a recipient", () => {
@@ -399,9 +402,11 @@ describe("plan ↔ track parity", () => {
   it("default behaviour (no alreadyKilledFloors) increments pages on the first week", () => {
     // Backwards-compat guarantee: when callers don't pass
     // `alreadyKilledFloors` (the existing test suite shape), the
-    // simulator behaves as before — incrementPages on every
-    // iteration. This protects the existing test cases from
-    // accidentally regressing into the parity-aware path.
+    // simulator behaves as before — `incrementPages` runs on every
+    // iteration. v2.2: pages no longer reduce gear `effectiveNeed`,
+    // so the player is recommended for the drop regardless of their
+    // page balance. Pre-v2.2 the same setup hit `effectiveNeed = 0`
+    // and got skipped; this test now asserts the inverse.
     const tier = makeTier();
     const players: PlayerSnapshot[] = [
       makePlayer({
@@ -410,7 +415,7 @@ describe("plan ↔ track parity", () => {
         gearRole: "tank",
         bisDesired: { Earring: "Savage" },
         bisCurrent: { Earring: "Crafted" },
-        pages: { 1: 2 }, // After +1 = 3 → buyPower = 1
+        pages: { 1: 2 }, // would have been "self-buyable" pre-v2.2
       }),
     ];
     const plan = simulateLootTimeline(players, tier, {
@@ -425,8 +430,8 @@ describe("plan ↔ track parity", () => {
       ],
     });
     const earring = plan[0]?.weeks[0]?.drops[0];
-    // The single player's effective need is reduced by the
-    // (incremented) buyPower to 0, so they aren't recommended.
-    expect(earring?.recipientName).toBeNull();
+    // v2.2: pages don't reduce gear effectiveNeed, so the player is
+    // still recommended for the drop.
+    expect(earring?.recipientName).toBe("Loner");
   });
 });

@@ -7,6 +7,39 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-04-26
+
+### Changed
+
+- **Gear-drop scoring no longer subtracts page balances from
+  effective need.** The previous formula computed
+  `effectiveNeed = slotsWanting - slotsAlready - buyPower` per
+  item, which had two real-world problems:
+
+  1. Page balances were double-counted across a player's multiple
+     needed items. A player with 3 Floor-1 pages who needed three
+     different accessories saw `buyPower = 1` reapplied to each
+     item independently — every item's effective_need dropped to
+     0, so the algorithm refused to recommend any of them even
+     though the player could only buy one accessory total.
+  2. Pages on Floors 2/3 are spent on Glaze / Twine vendors
+     (TomeUp upgrades), not on gear pieces. Letting Floor-2/3
+     pages reduce gear-drop priority misrepresented the team's
+     actual page economy.
+
+  v2.2: `effectiveNeed` for gear drops is just
+  `slotsWanting - slotsAlready`. Pages become a separate purchase
+  track that doesn't move drop recommendations. `buyPower` is
+  still computed and surfaced in the score breakdown for context.
+
+  `scoreMaterial` keeps using `buyPower` — a page-rich player
+  legitimately needs fewer Glaze / Twine drops because pages ARE
+  the canonical sink for those.
+
+  Practical effect on the Plan tab: a fresh tier with 8 players
+  now distributes ~19 Floor-1 drops across an 8-week forecast
+  (4, 4, 3, 3, 2, 1, 1, 1) instead of emptying out after week 2.
+
 ## [2.1.2] - 2026-04-26
 
 ### Fixed
