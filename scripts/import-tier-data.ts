@@ -703,9 +703,13 @@ async function main(): Promise<void> {
       .join(", ")}`,
   );
 
+  // Players are tier-scoped (v1.4). The lookup keys off `tier_id`,
+  // not `team_id`, so the script will only ever see rows belonging
+  // to the active tier — exactly the roster the spreadsheet's loot
+  // history was tracking.
   const playerRows = await client.execute({
-    sql: "SELECT id, name FROM player WHERE team_id = ?",
-    args: [teamId],
+    sql: "SELECT id, name FROM player WHERE tier_id = ?",
+    args: [tierId],
   });
   const playerIdByName = new Map<string, number>(
     playerRows.rows.map((r) => [String(r.name), Number(r.id)]),

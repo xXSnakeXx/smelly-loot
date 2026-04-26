@@ -22,6 +22,7 @@ import { PlayerFormDialog } from "./player-form-dialog";
 
 interface PlayersTableProps {
   players: Player[];
+  tierId: number;
 }
 
 /**
@@ -30,9 +31,12 @@ interface PlayersTableProps {
  * Each row shows the player's name, the main job + role badge, the
  * comma-separated alt jobs (if any), and a truncated gear-link. The
  * per-row dialogs (`PlayerFormDialog`, `DeletePlayerDialog`) handle
- * the writes.
+ * the writes. `tierId` is forwarded to the edit dialog so the form
+ * can stamp the hidden tier-id input that `createPlayerAction`
+ * expects (edits don't actually change the tier, but the dialog is
+ * the same component).
  */
-export function PlayersTable({ players }: PlayersTableProps) {
+export function PlayersTable({ players, tierId }: PlayersTableProps) {
   const t = useTranslations("players.table");
   const tRoles = useTranslations("players.roles");
 
@@ -97,6 +101,7 @@ export function PlayersTable({ players }: PlayersTableProps) {
                 <div className="inline-flex items-center gap-1">
                   <PlayerFormDialog
                     player={player}
+                    tierId={tierId}
                     trigger={
                       <Button variant="ghost" size="icon-sm">
                         <Pencil />
