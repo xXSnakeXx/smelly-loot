@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-04-26
+
+### Fixed
+
+- **Player-detail route 404 after the v2.0 move.** The new Roster
+  table on `/tiers/[id]` and the team-roster table on `/team` link
+  the player name to `/team/[id]`, but the v2.0 release shipped
+  without actually creating that route — clicking a player name
+  hit a 404. Moved the existing `/players/[id]` page (BiS table,
+  pages stats, materials, savage drops) over to `/team/[id]` and
+  left the legacy path as a 308-redirect for any pre-v2 deep
+  links.
+
 ## [2.0.0] - 2026-04-26
 
 ### Breaking changes

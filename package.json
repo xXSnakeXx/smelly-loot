@@ -1,6 +1,6 @@
 {
   "name": "smelly-loot",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "Self-hosted loot distribution tool for Final Fantasy XIV savage raid statics",
   "license": "MIT",
