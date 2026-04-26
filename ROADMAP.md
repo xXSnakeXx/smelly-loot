@@ -371,17 +371,99 @@ each `loot_drop` makes either outcome auditable.
 
 ---
 
-## Phase 2: Enhancements
+## Phase 2: Workflow & Integration
 
-Goal: convenience features that move the workflow beyond the spreadsheet.
+Goal: tighten the per-tier user journey from "tier created" to "weekly
+distribution announced in Discord", and surface progression at-a-glance.
 
-- [ ] **xivgear.app link import** — paste link, automatically populate BiS sources per slot. Investigate API / format first; fallback gracefully if format changes.
-- [ ] **Score breakdown tooltip** — hovering any score line in the recommendation panel shows the full numeric calculation
-- [ ] **Markdown / Discord export** — copy the week's distribution as a formatted message ready to paste in Discord
-- [ ] **Pages auto-tracking** — derive spent / current pages from loot history, no manual entry
-- [ ] **What-if mode** — drag a drop to a different player, see how it affects future recommendations
-- [ ] **Quick-search command palette** (`Cmd+K`) — "assign earring to Quah", "open week 5", "set Rei boots desired = TomeUp"
-- [ ] **Bulk BiS edit** — paste a TSV row to set all 12 slots at once for fast onboarding
+The work below is sequenced so each shippable increment unblocks the next:
+
+### 2.1 Plan ↔ Track parity (foundation, ~v1.5.0)
+
+The Plan tab simulates the *next* week (`startingWeekNumber = currentWeek + 1`)
+while Track scores the *current* week's drops; that's a one-page-per-floor
+delta in the underlying snapshot, which is enough to flip tiebreakers and make
+the two recommendations diverge for the same data. The Plan tab is supposed to
+be a faithful preview of what Track will recommend on the next kill, so this
+is a correctness bug — not a UX choice.
+
+- Investigate the divergence with a synthetic fixture (Test Tier ships
+  randomized BiS already; perfect for this) — write a Vitest case that asserts
+  Plan-Week-1 ≡ Track-Active-Week for the same snapshot.
+- Fix the simulator either by aligning `startingWeekNumber` to the active
+  week (and skipping the first `incrementPages`) OR by exposing the same
+  semantics behind both call sites with a shared helper.
+- Add a regression test so this doesn't drift again.
+
+### 2.2 Tier onboarding flow (~v1.5.0)
+
+- **Default `current_source = "Crafted"` for every slot** when a player is
+  created. The Heavyweight Test Tier already does this manually; promoting it
+  to a server-side default removes the "BiS table looks empty after creating
+  a player" foot-gun.
+- **Bulk-paste roster import** on the Players tab. Paste a TSV row per
+  player: `Name<TAB>MainJob<TAB>AltJobs<TAB>GearLink`. Validates against the
+  same Zod schema as the create dialog, surfaces per-row errors before
+  committing.
+- **Verify roster-copy on tier rollover** (already shipped in v1.4.0) keeps
+  working with the bulk-paste path.
+- Player rows stay editable inline once added — no separate "review" step.
+
+### 2.3 Role-driven roster UI (~v1.6.0)
+
+- **Sort order** in the Players tab + every per-floor recommendation list:
+  Tank → Healer → Melee DPS → Caster DPS → Phys-Ranged DPS.
+- **Role colours** applied to player rows, job chips, recipient pills on the
+  Plan / Track tabs:
+  - Tank → blue (sky-500ish)
+  - Healer → green (emerald-500ish)
+  - DPS (melee / caster / phys-range) → red (rose-500ish)
+- Sort + colour tokens centralised in `src/lib/ffxiv/roles.ts` so the same
+  conventions apply everywhere.
+
+### 2.4 Item-needs overview (~v1.6.0)
+
+- **Per-player** section on `/players/[id]`: "Still needed from Floor X" with
+  the slot, the desired source, and the derived iLv. Filtered to items where
+  `current ≠ desired AND desired ≠ NotPlanned`.
+- **Per-tier aggregate** on the tier-detail page (likely as a sub-section of
+  the Players tab or a small badge cluster on each tier card): "Floor 1: 3×
+  Earring · 2× Necklace · …". Drives the "what are we still farming" question
+  that comes up every other week.
+
+### 2.5 Discord export (~v1.7.0)
+
+- "Copy for Discord" button on the Plan tab. Renders the next week's planned
+  distribution as a short Discord-flavoured markdown block:
+
+  ```
+  **Mannschaft Smelly · Heavyweight Savage · Week 15**
+
+  **Floor 1 (Vamp Fatale)**
+  - Earring → Brad
+  - Necklace → S'ndae
+  - Bracelet → Quah
+  - Ring → Fara
+
+  **Floor 2 (The Blowjob Brothers)**
+  - …
+  ```
+
+- Single-click copy to clipboard, with a transient toast confirming the copy.
+- Single-person workflow: no shared state, no auth required — anyone with
+  access to the page can grab the export.
+
+### 2.6 Stretch goals (deferred, no commitment)
+
+These were the original Phase 2 items in this roadmap and stay on the wish
+list but no longer block 2.1–2.5:
+
+- [ ] **xivgear.app link import** — paste link, populate BiS sources
+- [ ] **Score-breakdown tooltip** on every recommendation pill
+- [ ] **Pages auto-tracking** without a manual `page_adjust` column
+- [ ] **What-if mode** — drag a drop to a different player, preview the ripple
+- [ ] **Cmd+K command palette**
+- [ ] **Bulk BiS edit** — paste a TSV row to set all 12 slots at once
 
 ---
 
