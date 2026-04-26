@@ -55,7 +55,7 @@ export type Team = typeof team.$inferSelect;
 export type NewTeam = typeof team.$inferInsert;
 
 /**
- * A single raider in a tier's roster.
+ * A single raider on a team's roster.
  *
  * `mainJob` is the four-character FF XIV job code (PLD, WHM, ...).
  * The mapping from job → gear role lives in `src/lib/ffxiv/jobs.ts`;
@@ -64,30 +64,30 @@ export type NewTeam = typeof team.$inferInsert;
  * effective immediately, with no migration.
  *
  * `altJobs` is a JSON array of job codes the player also raids on, for
- * the rare "I might main-swap mid-tier" scenarios. It's informational
- * for the algorithm in v1 but feeds the future per-job BiS view.
+ * the rare "I might main-swap mid-tier" scenarios.
  *
  * `gearLink` is the raw xivgear.app URL the player pasted.
  *
- * Players are **tier-scoped** (v1.4). Each tier has its own roster,
- * its own BiS plans, and its own page balances. Rolling over to a
- * new tier copies the previous roster's player rows (with fresh ids
- * and reset BiS), so "Brad in tier A" and "Brad in tier B" are
- * formally separate identities — they just happen to share a name.
- * Cross-tier history is therefore an explicit join across player.name
- * rather than a primary-key reference.
+ * Players are **team-scoped** (v2.0). The roster of stable
+ * identities lives once on the team — Brad is the same row whether
+ * the team is mid-tier on Heavyweight or already prepping
+ * Cruiserweight. Tier-specific data (gear plan, page balances,
+ * loot history) hangs off `bis_choice`, `loot_drop`, and friends
+ * via `(player_id, tier_id)` composite keys.
  *
- * The `tier_id` foreign key is the canonical scope. The previous
- * `team_id` column was dropped in the v1.4 migration; team identity
- * is recovered transitively via `tier.team_id`.
+ * The v1.4-era `tier_id` column was reverted in the v2.0 migration:
+ * scoping players per tier turned out to make cross-tier history
+ * harder than it was worth. Reusing the same `player.id` across
+ * tiers also means xivgear-link / notes maintenance happens in one
+ * place instead of 8x per rollover.
  */
 export const player = sqliteTable(
   "player",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    tierId: integer("tier_id")
+    teamId: integer("team_id")
       .notNull()
-      .references(() => tier.id, { onDelete: "cascade" }),
+      .references(() => team.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     mainJob: text("main_job").notNull(),
     altJobs: text("alt_jobs", { mode: "json" })
@@ -101,25 +101,35 @@ export const player = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (t) => [index("player_tier_idx").on(t.tierId, t.sortOrder)],
+  (t) => [index("player_team_idx").on(t.teamId, t.sortOrder)],
 );
 
 export type Player = typeof player.$inferSelect;
 export type NewPlayer = typeof player.$inferInsert;
 
 /**
- * Per-player BiS plan: which source they want for each slot.
+ * Per-(player, tier) BiS plan: which source they want for each slot.
  *
- * Composite primary key on (player, slot) so a player has at most one
- * row per slot. The `source` column accepts any value from `BIS_SOURCES`
- * (see `src/lib/ffxiv/slots.ts`); the application validates with Zod
+ * Composite primary key on (player, tier, slot) so a player has at
+ * most one row per slot per tier — and importantly, two rows for
+ * the same player+slot in different tiers (because each tier has
+ * its own max iLv and the team replans on rollover).
+ *
+ * The `source` columns accept any value from `BIS_SOURCES` (see
+ * `src/lib/ffxiv/slots.ts`); the application validates with Zod
  * before write.
  *
  * Two source columns are tracked: `desiredSource` is the BiS plan
- * (where the player wants the slot to land), `currentSource` is what
- * they're actually wearing right now. The spreadsheet uses both — the
+ * (where the player wants the slot to land for *this* tier),
+ * `currentSource` is what they're actually wearing right now. The
  * algorithm only cares about `desiredSource`, but the tracker UI
  * needs `currentSource` for colour-coded progress.
+ *
+ * Membership in a tier is implicit: if a player has any
+ * `bis_choice` row for a tier, they are in that tier's roster.
+ * That's why "add player to tier" stamps the 12-slot default plan
+ * and "remove player from tier" deletes those rows — no separate
+ * membership table is needed.
  */
 export const bisChoice = sqliteTable(
   "bis_choice",
@@ -127,13 +137,16 @@ export const bisChoice = sqliteTable(
     playerId: integer("player_id")
       .notNull()
       .references(() => player.id, { onDelete: "cascade" }),
+    tierId: integer("tier_id")
+      .notNull()
+      .references(() => tier.id, { onDelete: "cascade" }),
     slot: text("slot").notNull(),
     desiredSource: text("desired_source").notNull().default("NotPlanned"),
     currentSource: text("current_source").notNull().default("NotPlanned"),
     receivedAt: integer("received_at", { mode: "timestamp" }),
     marker: text("marker"),
   },
-  (t) => [primaryKey({ columns: [t.playerId, t.slot] })],
+  (t) => [primaryKey({ columns: [t.playerId, t.tierId, t.slot] })],
 );
 
 export type BisChoice = typeof bisChoice.$inferSelect;
