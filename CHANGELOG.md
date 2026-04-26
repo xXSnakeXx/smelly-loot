@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-04-26
+
+### Fixed
+
+- **Material-needs mapping on the tier-scoped player page.** The
+  Glaze/Twine/Ester assignment had been carried over from the
+  seed script's drop-floor layout instead of the team's upgrade
+  semantics — Glaze was wired to Head/Gloves/Boots, Twine to
+  Chestpiece/Pants, Ester to accessories. None of those matched
+  how the team actually spends the materials.
+
+  Corrected:
+  - **Twine** → all armor (Head, Chestpiece, Gloves, Pants, Boots).
+  - **Glaze** → all accessories (Earring, Necklace, Bracelet,
+    Ring1, Ring2).
+  - **Ester (Solvent)** → Weapon → tracked manually and no longer
+    surfaced on the materials card. Same convention the algorithm
+    already uses for the Floor-4 weapon drops.
+
+  The Materials card on `/tiers/[tid]/players/[pid]` now renders
+  two rows (Glaze, Twine) with the correct totals derived from
+  each player's `desiredSource = "TomeUp"` slot tally.
+
 ## [2.1.1] - 2026-04-26
 
 ### Changed
