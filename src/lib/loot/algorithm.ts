@@ -4,6 +4,7 @@ import {
   type ItemKey,
   ilvForSource,
   type Slot,
+  SLOTS,
   type SourceIlvLookup,
 } from "@/lib/ffxiv/slots";
 
@@ -243,14 +244,33 @@ function scoreGear(
       (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) === dropSource,
   ).length;
 
-  // Effective need: slots wanting the drop source, not already
-  // wearing it, and not already accounted for by self-purchase.
-  const effectiveNeed = slotsForItem.filter(
+  // Slots wanting the drop, not already wearing it, AND simulated
+  // as bought via pages — these still contribute to effectiveNeed,
+  // just at half weight. This keeps a drop recommendation alive
+  // even when every potential recipient could theoretically buy
+  // the slot themselves: the algorithm gives the drop to the
+  // highest-priority player among those still wanting it, but
+  // ranks them below page-poor competitors who would otherwise
+  // have to wait.
+  const PURCHASE_DISCOUNT = 0.5;
+  const slotsWantingPurchased = slotsForItem.filter(
+    (slot) =>
+      (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource &&
+      (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) !== dropSource &&
+      purchasedSlots.has(slot),
+  ).length;
+  const slotsWantingNotPurchased = slotsForItem.filter(
     (slot) =>
       (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource &&
       (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) !== dropSource &&
       !purchasedSlots.has(slot),
   ).length;
+  // Raw "slots needing the drop" minus the discount applied to the
+  // self-purchased ones. Float-valued so a 1-slot Earring drop with
+  // the slot in purchasedSlots gives 0.5 (not 0); a fresh Ring drop
+  // with both slots un-purchased gives 2.
+  const effectiveNeed =
+    slotsWantingNotPurchased + slotsWantingPurchased * (1 - PURCHASE_DISCOUNT);
 
   const desiredIlv = ilvForSource(context.tier, dropSource) ?? 0;
   const currentIlvOfFirstNeedingSlot = slotsForItem
@@ -385,45 +405,54 @@ export function computePurchasedSlots(
   floorNumber: number,
   dropSource: BisSource,
 ): Set<Slot> {
-  // Collect every gear item that lives on this floor, in iteration
-  // order of `buyCostByItem` (which preserves the seed insertion
-  // order — Earring before Necklace before Bracelet, etc.). We
-  // filter out materials by checking against `SLOTS_BY_ITEM_KEY`.
-  const floorGearItems: GearItemKey[] = [];
-  for (const [itemKey, costEntry] of tier.buyCostByItem) {
-    if (costEntry.floor !== floorNumber) continue;
-    if (!(itemKey in SLOTS_BY_ITEM_KEY)) continue;
-    floorGearItems.push(itemKey as GearItemKey);
-  }
-  if (floorGearItems.length === 0) return new Set();
-
-  // All gear items on a single FF XIV floor cost the same number of
-  // pages (Floor 1 accessories are all 3, Floor 2 armor is all 4,
-  // Floor 3 chest/pants are both 6). We use the first item's cost
-  // as the canonical floor price; if a future tier breaks that
-  // pattern the algorithm will under-buy slots whose cost exceeds
-  // the canonical, which fails safe ("recommend more drops" rather
-  // than "ignore real purchases").
-  const firstCost = tier.buyCostByItem.get(floorGearItems[0]!);
-  if (!firstCost) return new Set();
-  const pages = player.pages.get(floorNumber) ?? 0;
-  const buyPower = Math.floor(pages / firstCost.cost);
-  if (buyPower === 0) return new Set();
-
-  // Build the ordered list of slots the player still needs at this
-  // floor's drop source. Items with multiple slots (only Ring →
-  // Ring1, Ring2) appear in their declared sub-order.
-  const unmetSlots: Slot[] = [];
-  for (const itemKey of floorGearItems) {
-    for (const slot of SLOTS_BY_ITEM_KEY[itemKey]) {
-      if (
-        (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource &&
-        (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) !== dropSource
-      ) {
-        unmetSlots.push(slot);
-      }
+  // Build a slot → item lookup so we can map a slot back to the item
+  // it belongs to (and thus to its floor and cost). Pre-computed
+  // per call because SLOTS_BY_ITEM_KEY is small (12 slots) — no
+  // worth caching above the function scope.
+  const slotToItem = new Map<Slot, GearItemKey>();
+  for (const [itemKey, slots] of Object.entries(SLOTS_BY_ITEM_KEY)) {
+    for (const slot of slots) {
+      slotToItem.set(slot as Slot, itemKey as GearItemKey);
     }
   }
+
+  // Walk the SLOTS list in its canonical declared order (Weapon →
+  // Offhand → Head → ... → Ring1 → Ring2) and pick out the slots
+  // that:
+  //   1. belong to a gear item on the requested floor,
+  //   2. the player wants the drop source for, and
+  //   3. they don't already wear the drop source in.
+  //
+  // Iterating SLOTS rather than `tier.buyCostByItem` makes the
+  // purchase order deterministic regardless of whichever order
+  // Drizzle returns the buy-cost rows in (alphabetical, in the
+  // current build, which silently changed the simulation result
+  // from intended Earring-first to actually-Bracelet-first when
+  // we relied on Map insertion order).
+  const unmetSlots: Slot[] = [];
+  let perItemCost: number | undefined;
+  for (const slot of SLOTS) {
+    const itemKey = slotToItem.get(slot);
+    if (!itemKey) continue;
+    const costEntry = tier.buyCostByItem.get(itemKey);
+    if (!costEntry || costEntry.floor !== floorNumber) continue;
+    // First gear item we hit on this floor seeds the per-item cost.
+    // FF XIV invariant: every gear piece on a single floor costs the
+    // same number of pages, so any one item's cost is the canonical
+    // floor price.
+    if (perItemCost === undefined) perItemCost = costEntry.cost;
+    if (
+      (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource &&
+      (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) !== dropSource
+    ) {
+      unmetSlots.push(slot);
+    }
+  }
+  if (unmetSlots.length === 0 || perItemCost === undefined) return new Set();
+
+  const pages = player.pages.get(floorNumber) ?? 0;
+  const buyPower = Math.floor(pages / perItemCost);
+  if (buyPower === 0) return new Set();
 
   // Take the first `buyPower` slots, capped at the number of unmet
   // slots — pages can't conjure need that doesn't exist.

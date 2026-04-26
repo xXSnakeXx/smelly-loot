@@ -7,6 +7,47 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-04-26
+
+### Fixed
+
+- **Plan tab now recommends a recipient for every droppable item.**
+  Two issues with v2.2.1's page-aware purchase simulation
+  collapsed onto the same surface:
+
+  1. `computePurchasedSlots` walked `tier.buyCostByItem` in
+     iteration order, which is whatever order Drizzle returns
+     the rows in (alphabetical for the current build:
+     Bracelet → Earring → Necklace → Ring). Every Floor-1
+     player got Bracelet marked as their self-purchased slot, so
+     the Bracelet drop never surfaced a recipient.
+  2. The discount for a purchased slot was binary: it
+     contributed 0 to `effectiveNeed`. Floor-1 items where every
+     plausible recipient could self-buy (Earring + Necklace once
+     each player accumulated 3 pages) ended up with no drop
+     recommendation — the algorithm refused to assign anyone,
+     even though in-game the drop still falls and someone has to
+     take it.
+
+  v2.2.2:
+  - The purchase simulation now walks the canonical `SLOTS` list
+    (Weapon → Offhand → Head → Chestpiece → Gloves → Pants →
+    Boots → Earring → Necklace → Bracelet → Ring1 → Ring2). A
+    Floor-1 player who wants Earring + Necklace + Bracelet is
+    simulated as buying Earring first, leaving the other two
+    open as drop candidates.
+  - A purchased slot now contributes **0.5** to `effectiveNeed`
+    instead of 0. A page-rich player still scores positive and
+    will receive the drop if they're the only candidate, but
+    they're consistently outranked by anyone with raw unmet
+    need (which contributes 1.0 per slot).
+
+  Plan-tab Floor 1 in TestTier2 now shows a recipient for all
+  four items every week — Earring/Necklace at lower scores
+  (~35-40) reflecting that those slots are page-buyable, and
+  Bracelet/Ring at higher scores (~85-90) reflecting genuine
+  drop need.
+
 ## [2.2.1] - 2026-04-26
 
 ### Changed
