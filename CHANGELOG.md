@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-04-25
+
+### Fixed
+
+- **Dashboard plus-card now opens the New tier dialog.** The
+  trigger silently swallowed clicks because Base UI's
+  `DialogPrimitive.Trigger` merges its open-handlers onto the
+  element passed via the `render` prop, but the wrapper component
+  it was nested in didn't spread those props onto the inner
+  `<button>`. The plus-card markup is now inlined directly inside
+  `NewTierDialog`, so the merged props land on a real DOM node and
+  the dialog opens reliably. Two Playwright specs lock in the
+  regression (`e2e/new-tier-dialog.spec.ts` for the open gesture,
+  `e2e/new-tier-submit.spec.ts` for the full create-and-redirect
+  flow).
+- The dialog's default `maxIlv` now reads 790 (matching the
+  corrected Heavyweight cap from v1.2.2) instead of 795.
+
 ## [1.3.1] - 2026-04-25
 
 ### Fixed
