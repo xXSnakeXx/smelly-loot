@@ -23,29 +23,29 @@ export const dynamic = "force-dynamic";
  * Slot → upgrade-token mapping.
  *
  * Counting `desiredSource === "TomeUp"` rows per slot category gives
- * the number of Glaze / Twine / Ester tokens the player still needs
- * to acquire for the upgrades they planned in this tier.
+ * the number of Glaze / Twine tokens the player still needs to
+ * acquire for the upgrades they planned in this tier.
  *
- * Material assignment follows the seed (`src/lib/db/seed.ts`):
+ * Material assignment per the team's reading of the spreadsheet:
  *
- *   - Glaze drops on Floor 2 alongside Head/Gloves/Boots → small armor
- *   - Twine drops on Floor 3 alongside Chestpiece/Pants → large armor
- *   - Ester drops on Floor 3 → accessories (Earring/Necklace/Bracelet/Rings)
- *
- * Weapons live on Floor 4 (track-only) and don't draw from the three
- * material categories, so they're omitted on purpose.
+ *   - Twine → all armor: Head, Chestpiece, Gloves, Pants, Boots
+ *   - Glaze → all accessories: Earring, Necklace, Bracelet, Ring1, Ring2
+ *   - Ester (Solvent) → Weapon → tracked manually, not surfaced
+ *     here. Same convention as the Floor-4 weapon drops: scoring
+ *     them in the algorithm would be noise, so the team handles
+ *     weapon upgrades by hand.
  */
-const SLOT_TO_MATERIAL: Partial<Record<Slot, "Glaze" | "Twine" | "Ester">> = {
-  Head: "Glaze",
-  Gloves: "Glaze",
-  Boots: "Glaze",
+const SLOT_TO_MATERIAL: Partial<Record<Slot, "Glaze" | "Twine">> = {
+  Head: "Twine",
   Chestpiece: "Twine",
+  Gloves: "Twine",
   Pants: "Twine",
-  Earring: "Ester",
-  Necklace: "Ester",
-  Bracelet: "Ester",
-  Ring1: "Ester",
-  Ring2: "Ester",
+  Boots: "Twine",
+  Earring: "Glaze",
+  Necklace: "Glaze",
+  Bracelet: "Glaze",
+  Ring1: "Glaze",
+  Ring2: "Glaze",
 };
 
 /**
@@ -131,12 +131,11 @@ export default async function TierScopedPlayerDetailPage({
 
   // Derive the per-material need from the BiS plan: each slot whose
   // desiredSource === "TomeUp" demands one token of that slot's
-  // material. Slots without a matching material (e.g. Weapon) are
-  // ignored.
-  const materialsNeeded: Record<"Glaze" | "Twine" | "Ester", number> = {
+  // material. Slots without a matching material (Weapon, Offhand)
+  // are handled manually and excluded on purpose.
+  const materialsNeeded: Record<"Glaze" | "Twine", number> = {
     Glaze: 0,
     Twine: 0,
-    Ester: 0,
   };
   for (const choice of choices) {
     if (choice.desiredSource !== ("TomeUp" satisfies BisSource)) continue;
@@ -271,7 +270,7 @@ export default async function TierScopedPlayerDetailPage({
               <span className="text-muted-foreground">
                 {tStats("materials.needed")}
               </span>
-              {(["Glaze", "Twine", "Ester"] as const).map((mat) => {
+              {(["Glaze", "Twine"] as const).map((mat) => {
                 const got = stats.materialsReceived[mat];
                 const need = materialsNeeded[mat];
                 const remaining = Math.max(need - got, 0);
