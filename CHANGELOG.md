@@ -7,6 +7,47 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-04-26
+
+### Added
+
+- **Tier-scoped player-detail page** at `/tiers/[tid]/players/[pid]`.
+  Hosts the BiS editor + per-floor pages stats + materials need +
+  savage drop counter for the (player, tier) pair, reading the tier
+  straight from the URL. Editing a player's BiS plan in an archived
+  tier is now a click away from the tier's Roster tab — no fake
+  "active tier" detour, no implicit context.
+
+  The Roster table on `/tiers/[id]` links player names directly
+  here so picking a player from any tier (active or archived)
+  lands on that tier's plan.
+
+### Changed
+
+- **`/team/[id]` is now identity + tier list only.** The hero card
+  shows the player's stable team-level fields (name, jobs,
+  gear-link, notes) and an "Edit identity" affordance. A new
+  "Tier-specific gear plans" card lists every tier the player is
+  enrolled in, with a link into the new tier-scoped detail page
+  for each. The BiS editor + pages/materials/savage cards move out
+  of this view because they're per-tier data, not per-player.
+
+  This makes the v2.0 model consistent end-to-end: stable identity
+  belongs to the team and lives at `/team/[id]`; the tier-specific
+  gear plan belongs to the tier and lives at
+  `/tiers/[tid]/players/[pid]`.
+
+- New query `listTiersForPlayer(playerId)` joins through
+  `bis_choice` to find every tier a player is enrolled in. Active
+  tier sorts first, then archived in reverse-creation order to
+  match the dashboard's tier grid.
+
+### Fixed
+
+- Translations: `roster.*` and `team.roster.*` namespaces missing
+  from `de.json` are filled in (the keys were silently falling
+  back to English at runtime).
+
 ## [2.0.1] - 2026-04-26
 
 ### Fixed
