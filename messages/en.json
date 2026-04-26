@@ -269,7 +269,10 @@
       "untrackedFloor": "Manual distribution — no algorithm",
       "weekColumn": "Week",
       "noRecipient": "—",
-      "viaPagesHint": "Player has enough pages to self-buy this slot."
+      "viaPagesHint": "Player has enough pages to self-buy this slot.",
+      "refresh": "Refresh",
+      "refreshing": "Refreshing…",
+      "refreshHint": "Recompute the plan from the latest snapshot. Edits made via the UI refresh automatically; this button is for direct DB changes or other browser tabs."
     },
     "noWeeks": {
       "title": "No raid weeks recorded yet.",

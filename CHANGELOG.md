@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-04-26
+
+### Added
+
+- **Manual refresh button on the Plan tab.** The plan re-computes
+  automatically whenever a Server Action fires (kill toggles, drop
+  awards, BiS edits, page-adjust saves, roster changes, tier
+  settings) — but direct DB edits or activity in another browser
+  tab don't trip Next.js's revalidation. The new
+  `<RefreshButton>` calls `router.refresh()` to re-fetch the RSC
+  payload and recompute the plan against the latest snapshot.
+  Spins its icon while pending. An accompanying Playwright spec
+  (`e2e/plan-refresh-button.spec.ts`) locks the click → spinner →
+  enabled loop in.
+
 ## [1.4.0] - 2026-04-25
 
 A pivot to a tier-centric data model. Players, BiS plans, page
