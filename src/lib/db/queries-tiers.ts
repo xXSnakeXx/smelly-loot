@@ -1,7 +1,13 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "./client";
-import { bossKill, lootDrop, raidWeek, tier as tierTable } from "./schema";
+import {
+  bossKill,
+  lootDrop,
+  player,
+  raidWeek,
+  tier as tierTable,
+} from "./schema";
 
 /**
  * Tier-list helpers used by the dashboard's tier-grid view.
@@ -28,6 +34,7 @@ import { bossKill, lootDrop, raidWeek, tier as tierTable } from "./schema";
  * `boss_kill` rows; `drops` counts `loot_drop` rows.
  */
 export interface TierStats {
+  players: number;
   weeks: number;
   kills: number;
   drops: number;
@@ -92,9 +99,19 @@ export async function listTiersForTeam(
     .where(inArray(raidWeek.tierId, tierIds))
     .groupBy(raidWeek.tierId);
 
+  const playerRows = await db
+    .select({
+      tierId: player.tierId,
+      count: sql<number>`count(*)`,
+    })
+    .from(player)
+    .where(inArray(player.tierId, tierIds))
+    .groupBy(player.tierId);
+
   const weekByTier = new Map(weekRows.map((r) => [r.tierId, r.count]));
   const killByTier = new Map(killRows.map((r) => [r.tierId, r.count]));
   const dropByTier = new Map(dropRows.map((r) => [r.tierId, r.count]));
+  const playerByTier = new Map(playerRows.map((r) => [r.tierId, r.count]));
 
   // Sort active tier(s) first, then archived tiers in reverse-creation
   // order so the most recently archived tier comes second. This matches
@@ -111,6 +128,7 @@ export async function listTiersForTeam(
   return sorted.map((t) => ({
     ...t,
     stats: {
+      players: playerByTier.get(t.id) ?? 0,
       weeks: weekByTier.get(t.id) ?? 0,
       kills: killByTier.get(t.id) ?? 0,
       drops: dropByTier.get(t.id) ?? 0,

@@ -46,6 +46,12 @@ interface PlayerFormDialogProps {
   /** When provided, the dialog opens in edit mode and pre-fills the form. */
   player?: Player;
   /**
+   * The tier this dialog adds the player to. Required for creates;
+   * ignored for edits because a player's tier is fixed at creation
+   * time (rolling over to a new tier creates a fresh player row).
+   */
+  tierId: number;
+  /**
    * Element rendered as the dialog's trigger. Base UI's `render` prop
    * swaps the trigger's underlying button for this one — equivalent
    * to Radix's `asChild` but explicitly typed.
@@ -67,7 +73,11 @@ interface PlayerFormDialogProps {
  * mental model and to make the role-weight mapping visible at the
  * point of selection.
  */
-export function PlayerFormDialog({ player, trigger }: PlayerFormDialogProps) {
+export function PlayerFormDialog({
+  player,
+  tierId,
+  trigger,
+}: PlayerFormDialogProps) {
   const t = useTranslations("players.form");
   const tToast = useTranslations("players.toasts");
   const tRoles = useTranslations("players.roles");
@@ -105,7 +115,9 @@ export function PlayerFormDialog({ player, trigger }: PlayerFormDialogProps) {
         <form action={formAction} className="flex flex-col gap-4">
           {isEditing ? (
             <input type="hidden" name="id" value={player.id} />
-          ) : null}
+          ) : (
+            <input type="hidden" name="tierId" value={tierId} />
+          )}
 
           <FormRow id="name" label={t("name.label")} error={errors.name}>
             <Input

@@ -149,7 +149,7 @@ function TierCard({
             </div>
           </div>
 
-          <dl className="mt-auto grid grid-cols-3 gap-2 border-t border-border pt-3 text-xs">
+          <dl className="mt-auto grid grid-cols-4 gap-2 border-t border-border pt-3 text-xs">
             <Stat
               label="Status"
               value={
@@ -164,7 +164,15 @@ function TierCard({
               }
             />
             <Stat
-              label={"Weeks"}
+              label="Players"
+              value={
+                <span className="font-mono text-sm text-foreground">
+                  {tier.stats.players}
+                </span>
+              }
+            />
+            <Stat
+              label="Weeks"
               value={
                 <span className="font-mono text-sm text-foreground">
                   {tier.stats.weeks}
@@ -172,7 +180,7 @@ function TierCard({
               }
             />
             <Stat
-              label={"Kills"}
+              label="Kills"
               value={
                 <span className="font-mono text-sm text-foreground">
                   {tier.stats.kills}

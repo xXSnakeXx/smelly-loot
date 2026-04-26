@@ -6,7 +6,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/lib/db";
-import { listPlayersForTeam } from "@/lib/db/queries-players";
+import { listPlayersForTier } from "@/lib/db/queries-players";
 import {
   floor as floorTable,
   lootDrop,
@@ -26,13 +26,7 @@ import {
  * to the legacy `/history` route so the visual rhythm survives the
  * routing reshuffle.
  */
-export async function HistoryView({
-  tierId,
-  teamId,
-}: {
-  tierId: number;
-  teamId: number;
-}) {
+export async function HistoryView({ tierId }: { tierId: number }) {
   const t = await getTranslations("history");
   const dateLocale = (await getLocale()) === "de" ? deLocale : enLocale;
 
@@ -62,7 +56,7 @@ export async function HistoryView({
       .from(floorTable)
       .where(eq(floorTable.tierId, tierId))
       .orderBy(floorTable.number),
-    listPlayersForTeam(teamId),
+    listPlayersForTier(tierId),
   ]);
 
   const playerNameById = new Map(players.map((p) => [p.id, p.name]));

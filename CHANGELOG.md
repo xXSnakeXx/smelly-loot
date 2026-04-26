@@ -7,6 +7,47 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-04-25
+
+A pivot to a tier-centric data model. Players, BiS plans, page
+balances, and loot history now all hang off a tier — every tier is
+its own self-contained universe of rosters and progression.
+
+### Changed
+
+- **Players are tier-scoped.** `player.team_id` →
+  `player.tier_id` (Drizzle migration `0002_tier_scoped_players`).
+  "Brad in Heavyweight" and "Brad in Cruiserweight" are formally
+  separate identities; cross-tier history is recoverable via
+  `player.name` joins instead of a stable foreign key. The
+  migration backfills `tier_id` from each player's strongest
+  signal — the tier with the most `page_adjust` rows — falling
+  back to the team's earliest-created tier for players who never
+  raided.
+- **Players is now a tab inside the tier detail.** The dashboard's
+  tier card opens straight onto the Players tab (Players / Plan /
+  Track / History / Settings, in that order). The top nav drops
+  the global Players link; the dashboard's tier grid is the
+  canonical entry point for everything tier-scoped.
+- **Dashboard tier card** picks up a Players column in the stats
+  row alongside Status / Weeks / Kills.
+
+### Added
+
+- **`createTierAction` copies the previous tier's roster** into
+  the new tier when the plus card is clicked. Player rows
+  (name / mainJob / altJobs / gearLink / notes / sortOrder)
+  duplicate; BiS plans / page balances / loot history start fresh.
+- **`createPlayerAction`** now takes a `tierId` so the New player
+  dialog stamps the hidden field automatically — no more "active
+  tier" lookup behind the scenes.
+- **`TierStats.players`** counts the roster size per tier.
+
+### Routing
+
+- `/players` redirects to `/tiers/[active.id]` (the Players tab is
+  the default), so bookmarks keep working.
+
 ## [1.3.2] - 2026-04-25
 
 ### Fixed
