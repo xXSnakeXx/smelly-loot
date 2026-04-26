@@ -15,6 +15,13 @@
       "when": 1777122214770,
       "tag": "0001_many_true_believers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777200000000,
+      "tag": "0002_tier_scoped_players",
+      "breakpoints": true
     }
   ]
 }

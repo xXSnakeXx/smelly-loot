@@ -52,7 +52,7 @@ function indexBy<T, K>(
 }
 
 /**
- * Build a `PlayerSnapshot` for every player on the team.
+ * Build a `PlayerSnapshot` for every player on the tier's roster.
  *
  * The snapshot is computed against the given tier — page balances,
  * Savage drop counts, "last drop from this floor", and material
@@ -63,14 +63,13 @@ function indexBy<T, K>(
  * lets users pick known jobs, so this fallback is purely defensive.
  */
 export async function loadPlayerSnapshots(
-  teamId: number,
   tierId: number,
 ): Promise<PlayerSnapshot[]> {
   // 1. Players + their BiS choices.
   const players = await db
     .select()
     .from(playerTable)
-    .where(eq(playerTable.teamId, teamId))
+    .where(eq(playerTable.tierId, tierId))
     .orderBy(playerTable.sortOrder, playerTable.id);
 
   if (players.length === 0) return [];

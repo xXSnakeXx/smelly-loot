@@ -37,9 +37,10 @@ import {
 /**
  * A single static (raid team).
  *
- * Phase 1 assumes one team per deployment, but the schema already
- * supports multiple rows so the Phase 3 multi-team feature won't
- * require a destructive migration.
+ * Tier-rollover decision (v1.4): players are scoped to a tier rather
+ * than a team. The team row stays as the top-level grouping so a
+ * future deployment can host multiple teams; tiers + rosters then
+ * hang off it.
  */
 export const team = sqliteTable("team", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -54,7 +55,7 @@ export type Team = typeof team.$inferSelect;
 export type NewTeam = typeof team.$inferInsert;
 
 /**
- * A single raider on a team.
+ * A single raider in a tier's roster.
  *
  * `mainJob` is the four-character FF XIV job code (PLD, WHM, ...).
  * The mapping from job → gear role lives in `src/lib/ffxiv/jobs.ts`;
@@ -66,17 +67,27 @@ export type NewTeam = typeof team.$inferInsert;
  * the rare "I might main-swap mid-tier" scenarios. It's informational
  * for the algorithm in v1 but feeds the future per-job BiS view.
  *
- * `gearLink` is the raw xivgear.app URL the player pasted. Phase 1
- * stores it verbatim; Phase 2 adds the parser that turns it into BiS
- * choices automatically.
+ * `gearLink` is the raw xivgear.app URL the player pasted.
+ *
+ * Players are **tier-scoped** (v1.4). Each tier has its own roster,
+ * its own BiS plans, and its own page balances. Rolling over to a
+ * new tier copies the previous roster's player rows (with fresh ids
+ * and reset BiS), so "Brad in tier A" and "Brad in tier B" are
+ * formally separate identities — they just happen to share a name.
+ * Cross-tier history is therefore an explicit join across player.name
+ * rather than a primary-key reference.
+ *
+ * The `tier_id` foreign key is the canonical scope. The previous
+ * `team_id` column was dropped in the v1.4 migration; team identity
+ * is recovered transitively via `tier.team_id`.
  */
 export const player = sqliteTable(
   "player",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    teamId: integer("team_id")
+    tierId: integer("tier_id")
       .notNull()
-      .references(() => team.id, { onDelete: "cascade" }),
+      .references(() => tier.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     mainJob: text("main_job").notNull(),
     altJobs: text("alt_jobs", { mode: "json" })
@@ -90,7 +101,7 @@ export const player = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (t) => [index("player_team_idx").on(t.teamId, t.sortOrder)],
+  (t) => [index("player_tier_idx").on(t.tierId, t.sortOrder)],
 );
 
 export type Player = typeof player.$inferSelect;

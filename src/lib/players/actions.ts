@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { getCurrentTeam } from "@/lib/db/queries";
 import { player } from "@/lib/db/schema";
 
 import {
@@ -36,11 +35,16 @@ function fieldErrors(error: z.ZodError): Record<string, string> {
 }
 
 /**
- * Create a player on the active team.
+ * Create a player in the given tier's roster.
  *
- * Sort order is set to `max(sort_order) + 1` so newly added players
- * land at the end of the table; the team-overview page later exposes
- * drag handles to reorder.
+ * Sort order is set to `max(sort_order) + 1` *within the tier* so
+ * newly added players land at the end of the table; the team-overview
+ * page later exposes drag handles to reorder.
+ *
+ * The form must include a hidden `tierId` field so the action knows
+ * which roster to attach the new player to. Players are tier-scoped
+ * (v1.4) so each tier has its own list — Brad in Heavyweight is a
+ * different DB row from Brad in Cruiserweight.
  */
 export async function createPlayerAction(
   _previous: ActionState,
@@ -51,16 +55,14 @@ export async function createPlayerAction(
     return { ok: false, errors: fieldErrors(parsed.error) };
   }
 
-  const team = await getCurrentTeam();
-
   const orderRow = await db
     .select({ nextOrder: max(player.sortOrder) })
     .from(player)
-    .where(eq(player.teamId, team.id));
+    .where(eq(player.tierId, parsed.data.tierId));
   const nextOrder = (orderRow[0]?.nextOrder ?? 0) + 1;
 
   await db.insert(player).values({
-    teamId: team.id,
+    tierId: parsed.data.tierId,
     name: parsed.data.name,
     mainJob: parsed.data.mainJob,
     altJobs: parsed.data.altJobs,
@@ -69,15 +71,20 @@ export async function createPlayerAction(
     sortOrder: nextOrder,
   });
 
-  revalidatePath("/players");
-  revalidatePath("/");
+  // Revalidate every tier-scoped surface — players appear in the
+  // tier's Players tab, the dashboard's tier card stat, and the
+  // tier-detail header. Hard-coding `/tiers/[id]` is futile because
+  // the params change with every tier; revalidating the layout root
+  // covers everything.
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
 /**
  * Update an existing player. Only the editable fields touch the row;
- * `team_id`, `sort_order`, and `created_at` are intentionally
- * preserved.
+ * `tier_id`, `sort_order`, and `created_at` are intentionally
+ * preserved (a player can't move tiers — the rollover flow creates
+ * a new row instead).
  */
 export async function updatePlayerAction(
   _previous: ActionState,
@@ -99,8 +106,7 @@ export async function updatePlayerAction(
     })
     .where(eq(player.id, parsed.data.id));
 
-  revalidatePath("/players");
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
@@ -121,7 +127,6 @@ export async function deletePlayerAction(
 
   await db.delete(player).where(eq(player.id, parsed.data.id));
 
-  revalidatePath("/players");
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   return { ok: true };
 }
