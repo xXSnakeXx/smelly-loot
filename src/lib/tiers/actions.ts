@@ -6,7 +6,12 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { getCurrentTeam } from "@/lib/db/queries";
-import { floor, tierBuyCost, tier as tierTable } from "@/lib/db/schema";
+import {
+  floor,
+  player as playerTable,
+  tierBuyCost,
+  tier as tierTable,
+} from "@/lib/db/schema";
 import { deriveSourceIlvs } from "@/lib/ffxiv/slots";
 import { DEFAULT_BUY_COSTS, DEFAULT_FLOORS } from "@/lib/ffxiv/tier-defaults";
 
@@ -127,13 +132,24 @@ export async function createTierAction(
   const team = await getCurrentTeam();
   const ilvs = deriveSourceIlvs(maxIlv);
 
-  // 1. Archive any currently-active tier on this team.
+  // 1. Identify the previously-active tier (if any) so we can copy
+  // its roster across. Captured BEFORE the archive step below
+  // because once the row is archived `getActiveTier` would return a
+  // different tier (or throw).
+  const previouslyActive = await db
+    .select()
+    .from(tierTable)
+    .where(and(eq(tierTable.teamId, team.id), isNull(tierTable.archivedAt)))
+    .orderBy(tierTable.createdAt);
+  const sourceTier = previouslyActive.at(-1);
+
+  // 2. Archive any currently-active tier on this team.
   await db
     .update(tierTable)
     .set({ archivedAt: new Date() })
     .where(and(eq(tierTable.teamId, team.id), isNull(tierTable.archivedAt)));
 
-  // 2. Insert the new tier and capture its id.
+  // 3. Insert the new tier and capture its id.
   const inserted = await db
     .insert(tierTable)
     .values({
@@ -156,7 +172,7 @@ export async function createTierAction(
     return { ok: false, errors: { name: "createFailed" } };
   }
 
-  // 3. Floor layout + buy costs.
+  // 4. Floor layout + buy costs.
   await db.insert(floor).values(
     DEFAULT_FLOORS.map((f) => ({
       tierId: newTierId,
@@ -175,7 +191,35 @@ export async function createTierAction(
     })),
   );
 
-  // 4. Refresh every page that reads tiers or loot context.
+  // 5. Copy the previous tier's roster onto the new tier (Topic
+  // "tier-rollover keeps the static together" — players are
+  // tier-scoped, so creating a new tier without copying would leave
+  // the new tier completely empty). BiS / page balances / loot
+  // history deliberately don't copy: each tier starts fresh on
+  // those fronts so the team can replan around new gear options.
+  if (sourceTier) {
+    const previousRoster = await db
+      .select()
+      .from(playerTable)
+      .where(eq(playerTable.tierId, sourceTier.id))
+      .orderBy(playerTable.sortOrder, playerTable.id);
+
+    if (previousRoster.length > 0) {
+      await db.insert(playerTable).values(
+        previousRoster.map((p) => ({
+          tierId: newTierId,
+          name: p.name,
+          mainJob: p.mainJob,
+          altJobs: p.altJobs,
+          gearLink: p.gearLink ?? null,
+          notes: p.notes ?? null,
+          sortOrder: p.sortOrder,
+        })),
+      );
+    }
+  }
+
+  // 6. Refresh every page that reads tiers or loot context.
   revalidatePath("/", "layout");
   return { ok: true, tierId: newTierId };
 }
