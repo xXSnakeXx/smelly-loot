@@ -13,7 +13,7 @@ import {
   bisToneClasses,
   computeBisTone,
 } from "@/lib/ffxiv/bis-status";
-import { GEAR_ROLES, type GearRole, jobToGearRole } from "@/lib/ffxiv/jobs";
+import { type GearRole, jobToGearRole } from "@/lib/ffxiv/jobs";
 import { type BisSource, SLOTS, type Slot } from "@/lib/ffxiv/slots";
 import { removePlayerFromTierAction } from "@/lib/tiers/membership-actions";
 import { cn } from "@/lib/utils";
@@ -285,8 +285,3 @@ function LegendChip({ tone, label }: { tone: BisRowTone; label: string }) {
     </span>
   );
 }
-
-// keep the `GEAR_ROLES` import used (lint hook) by referencing it
-// in a no-op constant. The role-order map relies on the canonical
-// list staying in sync.
-void GEAR_ROLES;
