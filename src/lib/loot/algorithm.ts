@@ -39,9 +39,52 @@ export const SLOTS_BY_ITEM_KEY = {
   Ring: ["Ring1", "Ring2"],
 } as const satisfies Record<GearItemKey, readonly Slot[]>;
 
+/**
+ * Slots upgraded to TomeUp when a given material is consumed.
+ *
+ * In FF XIV's loot economy each TomeUp slot needs exactly one
+ * matching material item (Glaze for accessories, Twine for
+ * clothing, Ester for weapons) plus the base Tome equipment
+ * (which is bought outside the raid loop with weekly
+ * tomestones — not modelled here). The planner treats one
+ * material as one fulfilment of any compatible TomeUp need.
+ */
+export const SLOTS_BY_MATERIAL = {
+  Glaze: ["Earring", "Necklace", "Bracelet", "Ring1", "Ring2"],
+  Twine: ["Head", "Chestpiece", "Gloves", "Pants", "Boots"],
+  Ester: ["Weapon", "Offhand"],
+} as const satisfies Record<MaterialKey, readonly Slot[]>;
+
 /** Item keys that map to gear slots. The remaining keys are materials. */
 export type GearItemKey = Exclude<ItemKey, "Glaze" | "Twine" | "Ester">;
 export type MaterialKey = Extract<ItemKey, "Glaze" | "Twine" | "Ester">;
+
+/**
+ * Type guard: does this item key refer to a TomeUp upgrade
+ * material rather than a gear piece?
+ */
+export function isMaterial(itemKey: ItemKey): itemKey is MaterialKey {
+  return itemKey === "Glaze" || itemKey === "Twine" || itemKey === "Ester";
+}
+
+/**
+ * Slots filled by an item — gear items return their gear slots,
+ * material items return the slots they upgrade to TomeUp.
+ */
+export function slotsForItem(itemKey: ItemKey): readonly Slot[] {
+  if (isMaterial(itemKey)) {
+    return SLOTS_BY_MATERIAL[itemKey];
+  }
+  return SLOTS_BY_ITEM_KEY[itemKey as GearItemKey];
+}
+
+/**
+ * The BiS source an item fills. Gear items deliver the Savage
+ * source; material items deliver the TomeUp source.
+ */
+export function sourceForItem(itemKey: ItemKey): BisSource {
+  return isMaterial(itemKey) ? "TomeUp" : "Savage";
+}
 
 /**
  * Snapshot of one player at scoring time. All collections are read

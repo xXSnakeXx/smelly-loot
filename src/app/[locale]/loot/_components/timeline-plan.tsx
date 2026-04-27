@@ -116,8 +116,18 @@ export function TimelinePlan({
                         return (
                           <TableCell key={item} className="text-sm">
                             {drop ? (
-                              <span className="inline-block rounded-md bg-muted/50 px-2 py-0.5 text-xs">
+                              <span
+                                className={`inline-block rounded-md px-2 py-0.5 text-xs ${
+                                  drop.source === "TomeUp"
+                                    ? "bg-amber-500/15 text-amber-200"
+                                    : "bg-muted/50"
+                                }`}
+                                title={`${drop.recipientName} → ${drop.slot} (${drop.source})`}
+                              >
                                 {drop.recipientName}
+                                <span className="ml-1 text-muted-foreground">
+                                  ({drop.slot})
+                                </span>
                               </span>
                             ) : (
                               <span className="text-muted-foreground">
@@ -144,6 +154,9 @@ export function TimelinePlan({
                           {tBuys("playerColumn")}
                         </TableHead>
                         <TableHead className="text-xs">
+                          {tBuys("itemColumn")}
+                        </TableHead>
+                        <TableHead className="text-xs">
                           {tBuys("slotColumn")}
                         </TableHead>
                         <TableHead className="text-xs">
@@ -157,16 +170,23 @@ export function TimelinePlan({
                     <TableBody>
                       {plan.buys.map((buy) => (
                         <TableRow
-                          key={`${buy.playerId}|${buy.slot}|${buy.completionWeek}`}
+                          key={`${buy.playerId}|${buy.itemKey}|${buy.slot}|${buy.completionWeek}`}
                         >
                           <TableCell className="text-sm">
                             {buy.playerName}
                           </TableCell>
                           <TableCell className="text-sm">
-                            <span className="inline-block rounded-md bg-muted/50 px-2 py-0.5 text-xs">
-                              {buy.slot}
+                            <span
+                              className={`inline-block rounded-md px-2 py-0.5 text-xs ${
+                                buy.source === "TomeUp"
+                                  ? "bg-amber-500/15 text-amber-200"
+                                  : "bg-muted/50"
+                              }`}
+                            >
+                              {buy.itemKey}
                             </span>
                           </TableCell>
+                          <TableCell className="text-sm">{buy.slot}</TableCell>
                           <TableCell className="font-mono text-xs">
                             {buy.completionWeek}
                           </TableCell>

@@ -370,4 +370,141 @@ describe("computeFloorPlan", () => {
     expect(meleeFulfilments).toBe(4);
     expect(casterFulfilments).toBe(4);
   });
+
+  it("plans Glaze drops + buys to fill TomeUp accessory needs (v3.1 materials)", () => {
+    // F2 drops Glaze (cost 3). With 4 players each wanting 3
+    // accessory TomeUp slots = 12 needs total, but only 8 Glaze
+    // drops in the horizon, the optimiser must mix drops with
+    // page-buys so every player ends up covered.
+    const tier = makeTier();
+    const players: PlayerSnapshot[] = ["A", "B", "C", "D"].map((name, idx) =>
+      makePlayer({
+        id: idx + 1,
+        name,
+        gearRole: "tank",
+        bisDesired: {
+          Earring: "TomeUp",
+          Necklace: "TomeUp",
+          Bracelet: "TomeUp",
+        },
+        bisCurrent: {
+          Earring: "Crafted",
+          Necklace: "Crafted",
+          Bracelet: "Crafted",
+        },
+      }),
+    );
+    const plan = computeFloorPlan(
+      {
+        floorNumber: 2,
+        itemKeys: ["Head", "Gloves", "Boots", "Glaze"],
+        trackedForAlgorithm: true,
+      },
+      players,
+      tier,
+      {
+        startingWeekNumber: 1,
+        weeksAhead: 8,
+        alreadyKilledFloors: new Set(),
+      },
+    );
+    const totalFulfilments =
+      plan.drops.filter((d) => d.source === "TomeUp").length +
+      plan.buys.filter((b) => b.source === "TomeUp").length;
+    // 4 players × 3 accessory needs each = 12 TomeUp fills total.
+    expect(totalFulfilments).toBe(12);
+    // At least one Glaze drop assigned (drops cheaper than buys).
+    expect(
+      plan.drops.some((d) => d.itemKey === "Glaze" && d.source === "TomeUp"),
+    ).toBe(true);
+    // At least one Glaze buy assigned to cover the deficit
+    // (only 8 Glaze drops in the horizon vs 12 needs).
+    expect(
+      plan.buys.some((b) => b.itemKey === "Glaze" && b.source === "TomeUp"),
+    ).toBe(true);
+  });
+
+  it("respects shared page budget across cost classes (F2 Glaze + gear)", () => {
+    // F2 has Glaze (cost 3) and gear (cost 4). With 8 pages
+    // total a player can buy at most 2 items if mixing: 1 Glaze
+    // (3) + 1 gear (4) = 7 pages, leaves 1 unused. The model
+    // must not over-allocate buys: total pagesUsed ≤ totalPages.
+    const tier = makeTier();
+    const players = [
+      makePlayer({
+        id: 1,
+        name: "Mixed",
+        gearRole: "tank",
+        bisDesired: {
+          Head: "Savage",
+          Gloves: "Savage",
+          Boots: "Savage",
+          Earring: "TomeUp",
+          Necklace: "TomeUp",
+          Bracelet: "TomeUp",
+        },
+        bisCurrent: {
+          Head: "Crafted",
+          Gloves: "Crafted",
+          Boots: "Crafted",
+          Earring: "Crafted",
+          Necklace: "Crafted",
+          Bracelet: "Crafted",
+        },
+      }),
+    ];
+    const plan = computeFloorPlan(
+      {
+        floorNumber: 2,
+        itemKeys: ["Head", "Gloves", "Boots", "Glaze"],
+        trackedForAlgorithm: true,
+      },
+      players,
+      tier,
+      {
+        startingWeekNumber: 1,
+        weeksAhead: 8,
+        alreadyKilledFloors: new Set(),
+      },
+    );
+    const totalPages = plan.buys
+      .filter((b) => b.playerName === "Mixed")
+      .reduce((sum, b) => sum + b.pagesUsed, 0);
+    // Mixed player has 8 F2 pages over the horizon; total spend
+    // must not exceed that.
+    expect(totalPages).toBeLessThanOrEqual(8);
+  });
+
+  it("Twine drops on F3 fill clothing TomeUp needs (v3.1 materials)", () => {
+    const tier = makeTier();
+    const players = [
+      makePlayer({
+        id: 1,
+        name: "Solo",
+        gearRole: "caster",
+        bisDesired: { Head: "TomeUp", Pants: "TomeUp" },
+        bisCurrent: { Head: "Crafted", Pants: "Crafted" },
+      }),
+    ];
+    const plan = computeFloorPlan(
+      {
+        floorNumber: 3,
+        itemKeys: ["Chestpiece", "Pants", "Twine", "Ester"],
+        trackedForAlgorithm: true,
+      },
+      players,
+      tier,
+      {
+        startingWeekNumber: 1,
+        weeksAhead: 8,
+        alreadyKilledFloors: new Set(),
+      },
+    );
+    const filled =
+      plan.drops.filter((d) => d.source === "TomeUp").length +
+      plan.buys.filter((b) => b.source === "TomeUp").length;
+    expect(filled).toBe(2);
+    // At least one Twine drop assigned (cheaper than buying).
+    expect(plan.drops.some((d) => d.itemKey === "Twine")).toBe(true);
+  });
 });

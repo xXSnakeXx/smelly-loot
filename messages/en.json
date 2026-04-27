@@ -355,7 +355,8 @@
       "buys": {
         "heading": "Recommended page-buys",
         "playerColumn": "Player",
-        "slotColumn": "Slot",
+        "itemColumn": "Item",
+        "slotColumn": "For slot",
         "weekColumn": "From week",
         "pagesColumn": "Pages"
       }

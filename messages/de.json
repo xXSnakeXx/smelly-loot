@@ -353,7 +353,8 @@
       "buys": {
         "heading": "Empfohlene Page-Käufe",
         "playerColumn": "Spieler",
-        "slotColumn": "Slot",
+        "itemColumn": "Item",
+        "slotColumn": "Für Slot",
         "weekColumn": "Ab Woche",
         "pagesColumn": "Pages"
       }

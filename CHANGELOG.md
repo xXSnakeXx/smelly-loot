@@ -7,6 +7,70 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-04-26
+
+### Added
+
+- **Material handling in the optimal planner.** Glaze, Twine,
+  and Ester drops are now routed through the min-cost-flow
+  network just like gear:
+  - **Glaze** (drops on F2, cost 3 pages): fills accessory
+    TomeUp needs (Earring / Necklace / Bracelet / Ring1 /
+    Ring2 with `bisDesired = "TomeUp"`).
+  - **Twine** (drops on F3, cost 4 pages): fills clothing
+    TomeUp needs (Head / Chestpiece / Gloves / Pants / Boots).
+  - **Ester** (drops on F3, cost 4 pages): fills weapon
+    TomeUp needs (Weapon / Offhand).
+
+  Each (player, slot) need is owned by exactly one floor — the
+  floor where its filling item drops — so the per-floor flow
+  decomposition still gives globally optimal results.
+
+- **Mixed-cost shared page budget.** F2 has Glaze at cost 3
+  and gear at cost 4; F3 has materials at 4 and gear at 6.
+  The flow network now scales every edge to "1 unit of flow =
+  1 page", so a shared `PageBudget` cap (= total pages over
+  the horizon) correctly enforces "you can't spend 11 pages
+  when you only have 8" across cost classes. Buys are
+  modelled per-cost-class with their own k-counter so two
+  Glazes complete at W3 and W6 (not W3 and W3 as the v3.0
+  per-item-k formulation falsely showed).
+
+- **Per-need source aggregation in the read-off.** SSP can
+  legally split flow between two equally-cheap incoming edges
+  (e.g., a Glaze drop in W1 may push 1.5 units to one need and
+  1.5 to another). The plan UI surfaces only the dominant
+  source per need (highest flow, drop preferred over buy on
+  ties) so a single drop never appears as two simultaneous
+  fulfilments.
+
+- **TomeUp tagging in Plan UI.** Drop and buy cells distinguish
+  Savage fulfilments from TomeUp fulfilments via colour (amber
+  for TomeUp, neutral for Savage) and an explicit `(slot)` tag
+  on drop chips. Buy table gains an "Item" column showing
+  whether a buy is gear or material.
+
+- 3 new unit tests in `floor-planner.test.ts` covering Glaze
+  drops + buys for accessory TomeUp, the shared cost-class
+  budget constraint, and Twine drops on F3.
+
+### Changed
+
+- `PlannedDrop` and `PlannedBuy` interfaces gain a
+  `source: "Savage" | "TomeUp"` discriminator. `PlannedBuy`
+  also gains an `itemKey` field describing exactly which item
+  the player should buy.
+- `algorithm.ts` exports `SLOTS_BY_MATERIAL`, `isMaterial`,
+  `slotsForItem`, and `sourceForItem` helpers consumed by the
+  planner.
+
+### Migrations
+
+- `0008_flush_plan_cache_v3_1.sql` — clears every tier's
+  `tier_plan_cache` row on container start because pre-v3.1
+  caches lack the new `source` / `itemKey` fields the UI now
+  reads.
+
 ## [3.0.0] - 2026-04-26
 
 ### Changed (BREAKING)

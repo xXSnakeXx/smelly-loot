@@ -57,6 +57,13 @@
       "when": 1777600000000,
       "tag": "0007_flush_plan_cache_v3",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1777700000000,
+      "tag": "0008_flush_plan_cache_v3_1",
+      "breakpoints": true
     }
   ]
 }
