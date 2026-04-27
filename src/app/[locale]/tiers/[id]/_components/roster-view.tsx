@@ -10,27 +10,25 @@ import {
 
 import { AddPlayersToTierDialog } from "./roster/add-players-to-tier-dialog";
 import { RosterBisMatrix } from "./roster/roster-bis-matrix";
-import { RosterTable } from "./roster/roster-table";
 
 /**
  * Roster tab on the tier-detail page.
  *
- * Players are team-scoped (v2.0) — the canonical roster lives on
- * `/team`. A player IS a member of a tier iff at least one
- * `bis_choice` row exists for the (player, tier) pair. This view
- * lists the current tier members and offers two affordances:
+ * The matrix is the primary view: click any cell to edit the
+ * desired / current source for that (player, slot) pair, click a
+ * player's name to jump to their team-level detail page. The
+ * leftmost cell of each row holds the "remove from tier" button
+ * so every per-player roster action is reachable from this single
+ * scroll surface.
  *
- *   - "Add players" — opens a dialog showing every team player not
- *     yet in the tier, with checkboxes; submitting stamps the
- *     12-slot Crafted-baseline default BiS plan for each selection.
- *   - Per-row "Remove from tier" — drops every `bis_choice` row for
- *     that (player, tier) pair, taking the player out of the tier
- *     while leaving their team-level identity (and historical loot
- *     drops) untouched.
+ * The "Add player" affordance lives in the toolbar above the
+ * matrix; it opens a multi-select dialog of every team player
+ * not yet in the tier. Each selection stamps the 12-slot
+ * Crafted-baseline default BiS plan.
  *
  * Stable identity (name, jobs, gear-link, notes) is edited on the
- * `/team` page, not here, because those fields don't change between
- * tiers.
+ * `/team/[id]` page — those fields don't change between tiers
+ * and don't belong in the matrix surface.
  */
 export async function RosterView({
   tierId,
@@ -76,13 +74,16 @@ export async function RosterView({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          {t("memberCount", { count: members.length })}
+        </p>
         {candidates.length > 0 ? (
           <AddPlayersToTierDialog
             tierId={tierId}
             candidates={candidates}
             trigger={
-              <Button>
+              <Button size="sm">
                 <UserPlus />
                 {t("addCta")}
               </Button>
@@ -91,16 +92,7 @@ export async function RosterView({
         ) : null}
       </div>
 
-      {/* BiS matrix first — it's the at-a-glance "who has what"
-          view the operator hits the Roster tab to read. The
-          edit-actions table sits underneath. */}
       <RosterBisMatrix tierId={tierId} />
-
-      <Card>
-        <CardContent className="p-0">
-          <RosterTable members={members} tierId={tierId} />
-        </CardContent>
-      </Card>
     </div>
   );
 }

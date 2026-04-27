@@ -134,8 +134,16 @@
     },
     "matrix": {
       "title": "BiS overview",
-      "description": "At-a-glance grid mirroring the spreadsheet. Each cell shows the desired source on top and the current one below; the colour matches the spreadsheet's progress legend. Click a player's name to open the per-slot editor.",
+      "description": "Click any cell to edit its desired or current source inline. Player names link to the per-player detail page.",
       "playerColumn": "Player",
+      "removeColumn": "Remove",
+      "removeRow": "Remove from tier",
+      "cell": {
+        "desired": "Desired",
+        "current": "Current",
+        "clickToEdit": "Pick the planned and worn source. Saves as you change.",
+        "saveError": "Save failed — please retry."
+      },
       "legend": {
         "bisAchieved": "BiS achieved",
         "needsUpgrade": "Needs upgrade",
@@ -144,7 +152,8 @@
         "behind": "Behind",
         "significantGap": "Significant gap"
       }
-    }
+    },
+    "memberCount": "{count} player(s) in tier"
   },
   "players": {
     "title": "Players",
