@@ -131,6 +131,19 @@
       "addError": "{count} player(s) could not be added.",
       "removed": "Removed {name} from the tier.",
       "removeError": "Removal failed — please try again."
+    },
+    "matrix": {
+      "title": "BiS overview",
+      "description": "At-a-glance grid mirroring the spreadsheet. Each cell shows the desired source on top and the current one below; the colour matches the spreadsheet's progress legend. Click a player's name to open the per-slot editor.",
+      "playerColumn": "Player",
+      "legend": {
+        "bisAchieved": "BiS achieved",
+        "needsUpgrade": "Needs upgrade",
+        "nearMax": "Near max",
+        "intermediate": "Intermediate",
+        "behind": "Behind",
+        "significantGap": "Significant gap"
+      }
     }
   },
   "players": {

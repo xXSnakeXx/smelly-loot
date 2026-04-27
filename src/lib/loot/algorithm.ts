@@ -3,8 +3,8 @@ import {
   type BisSource,
   type ItemKey,
   ilvForSource,
-  type Slot,
   SLOTS,
+  type Slot,
   type SourceIlvLookup,
 } from "@/lib/ffxiv/slots";
 
@@ -244,18 +244,6 @@ function scoreGear(
     ? Math.floor((player.pages.get(cost.floor) ?? 0) / cost.cost)
     : 0;
 
-  // How many of the relevant slots want this drop's source?
-  const slotsWanting = slotsForItem.filter(
-    (slot) => (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource,
-  ).length;
-
-  // How many of those slots already wear the drop's source?
-  const slotsAlready = slotsForItem.filter(
-    (slot) =>
-      (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource &&
-      (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) === dropSource,
-  ).length;
-
   // Slots wanting the drop, not already wearing it, AND simulated
   // as bought via pages — these still contribute to effectiveNeed,
   // just at half weight. This keeps a drop recommendation alive
@@ -287,7 +275,8 @@ function scoreGear(
   // teammate with genuine remaining need instead.
   const effectiveNeed = fullySelfServed
     ? 0
-    : slotsWantingNotPurchased + slotsWantingPurchased * (1 - PURCHASE_DISCOUNT);
+    : slotsWantingNotPurchased +
+      slotsWantingPurchased * (1 - PURCHASE_DISCOUNT);
 
   const desiredIlv = ilvForSource(context.tier, dropSource) ?? 0;
   const currentIlvOfFirstNeedingSlot = slotsForItem
@@ -473,7 +462,8 @@ export function computePurchasedSlots(
       playerUnmet.push(slot);
     }
   }
-  if (playerUnmet.length === 0 || perItemCost === undefined) return { purchased: new Set(), totalUnmet: 0 };
+  if (playerUnmet.length === 0 || perItemCost === undefined)
+    return { purchased: new Set(), totalUnmet: 0 };
 
   // Compute the team-wide demand per slot — the number of
   // OTHER players that also still want the drop source in that
@@ -510,7 +500,8 @@ export function computePurchasedSlots(
 
   const pages = player.pages.get(floorNumber) ?? 0;
   const buyPower = Math.floor(pages / perItemCost);
-  if (buyPower === 0) return { purchased: new Set(), totalUnmet: playerUnmet.length };
+  if (buyPower === 0)
+    return { purchased: new Set(), totalUnmet: playerUnmet.length };
 
   // Take the first `buyPower` slots from the demand-sorted list —
   // i.e. the player's contribution to the team's tightest

@@ -29,3 +29,12 @@ export async function listBisChoicesForPlayer(
     .from(bisChoice)
     .where(and(eq(bisChoice.playerId, playerId), eq(bisChoice.tierId, tierId)));
 }
+
+/**
+ * Pull every BiS row for a tier in one shot. Used by the Roster
+ * tab's matrix view, which needs an at-a-glance grid of all
+ * players × all slots without N round-trips.
+ */
+export async function listBisChoicesForTier(tierId: number) {
+  return db.select().from(bisChoice).where(eq(bisChoice.tierId, tierId));
+}

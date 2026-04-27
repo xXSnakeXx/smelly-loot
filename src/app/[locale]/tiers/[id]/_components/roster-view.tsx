@@ -9,6 +9,7 @@ import {
 } from "@/lib/db/queries-players";
 
 import { AddPlayersToTierDialog } from "./roster/add-players-to-tier-dialog";
+import { RosterBisMatrix } from "./roster/roster-bis-matrix";
 import { RosterTable } from "./roster/roster-table";
 
 /**
@@ -89,6 +90,12 @@ export async function RosterView({
           />
         ) : null}
       </div>
+
+      {/* BiS matrix first — it's the at-a-glance "who has what"
+          view the operator hits the Roster tab to read. The
+          edit-actions table sits underneath. */}
+      <RosterBisMatrix tierId={tierId} />
+
       <Card>
         <CardContent className="p-0">
           <RosterTable members={members} tierId={tierId} />
