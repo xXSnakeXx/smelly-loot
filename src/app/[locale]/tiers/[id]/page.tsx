@@ -18,8 +18,8 @@ import { listPlayersInTier } from "@/lib/db/queries-players";
 import { findTierById } from "@/lib/db/queries-tiers";
 import type { ItemKey } from "@/lib/ffxiv/slots";
 import { findCurrentWeek } from "@/lib/loot/actions";
+import { getCachedOrComputePlan } from "@/lib/loot/plan-cache";
 import { loadPlayerSnapshots, loadTierSnapshot } from "@/lib/loot/snapshots";
-import { simulateLootTimeline } from "@/lib/loot/timeline";
 
 import { HistoryView } from "./_components/history-view";
 import { RosterView } from "./_components/roster-view";
@@ -91,40 +91,33 @@ export default async function TierDetailPage({
       ])
     : [[], []];
 
-  // Plan tab: simulate the active week + the next `DEFAULT_WEEKS_AHEAD - 1`
-  // weeks. Starting at the active week (rather than `currentWeek + 1`) and
-  // marking the floors that have already been killed lets the simulator
-  // score the same snapshot Track scores against — so Plan-Week-1 for an
-  // active drop matches Track's recommendation for that exact drop. If
-  // there's no current week yet (a freshly-rolled tier), we just start at
-  // week 1 with no already-killed floors so the simulator behaves as a
-  // pure forward forecast.
-  const startingWeekNumber = currentWeek ? currentWeek.weekNumber : 1;
-  const alreadyKilledFloorNumbers = currentWeek
-    ? Array.from(
-        new Set(
-          kills
-            .map((k) => floors.find((f) => f.id === k.floorId)?.number)
-            .filter((n): n is number => typeof n === "number"),
-        ),
-      )
-    : [];
-  const timelines = simulateLootTimeline(snapshots, tierSnapshot, {
-    startingWeekNumber,
-    weeksAhead: DEFAULT_WEEKS_AHEAD,
-    alreadyKilledFloors: alreadyKilledFloorNumbers,
-    floors: floors.map((f) => ({
-      floorNumber: f.number,
-      itemKeys: f.drops as string[] as ItemKey[],
-      trackedForAlgorithm: f.trackedForAlgorithm,
-    })),
-  });
+  // Plan tab: read from the persistent cache. The cache is only
+  // refreshed when the user clicks the Refresh button on the Plan
+  // tab; routine kill toggles, drop awards, BiS edits, and roster
+  // changes deliberately do NOT advance it. That way casual Track
+  // interactions don't reshuffle the next-N-week recommendations
+  // while the operator is mid-conversation about who gets what.
+  //
+  // When the cache is empty (fresh tier) 
+  // computes once and writes it back, so the page never blocks on
+  // a cold cache.
+  const { timelines, computedAt: planComputedAt } =
+    await getCachedOrComputePlan(
+      tier.id,
+      floors.map((f) => ({
+        floorNumber: f.number,
+        itemKeys: f.drops as string[] as ItemKey[],
+        trackedForAlgorithm: f.trackedForAlgorithm,
+      })),
+    );
 
   const planNode = (
     <TimelinePlan
       timelines={timelines}
       weeksAhead={DEFAULT_WEEKS_AHEAD}
       hasPlayers={players.length > 0}
+      tierId={tier.id}
+      computedAt={planComputedAt}
     />
   );
 

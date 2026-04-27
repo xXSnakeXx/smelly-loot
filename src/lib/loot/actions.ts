@@ -5,8 +5,15 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { bossKill, lootDrop, raidWeek as raidWeekTable } from "@/lib/db/schema";
+import {
+  bossKill,
+  floor as floorTable,
+  lootDrop,
+  raidWeek as raidWeekTable,
+} from "@/lib/db/schema";
+import type { ItemKey } from "@/lib/ffxiv/slots";
 
+import { refreshPlan } from "./plan-cache";
 import {
   awardLootDropSchema,
   createRaidWeekSchema,
@@ -236,4 +243,47 @@ export async function findCurrentWeek(tierId: number) {
     .orderBy(desc(raidWeekTable.weekNumber))
     .limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * Recompute the Plan-tab simulation for a tier and refresh the
+ * cache. The Refresh button on the Plan tab calls this directly;
+ * other server actions intentionally don't (the Plan tab is sticky
+ * by design — only an explicit refresh advances it).
+ */
+const refreshPlanSchema = z.object({
+  tierId: z.coerce.number().int().positive(),
+});
+
+export async function refreshPlanAction(
+  formData: FormData,
+): Promise<LootActionResult> {
+  const parsed = refreshPlanSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { ok: false, reason: "validation", errors: fieldErrors(parsed.error) };
+  }
+  const { tierId } = parsed.data;
+
+  // Reload the floor list from the DB so the simulation matches
+  // whatever the tier's seed currently looks like (also covers
+  // future tiers whose floor layout differs from Heavyweight).
+  const floors = await db
+    .select()
+    .from(floorTable)
+    .where(eq(floorTable.tierId, tierId))
+    .orderBy(floorTable.number);
+
+  await refreshPlan(
+    tierId,
+    floors.map((f) => ({
+      floorNumber: f.number,
+      itemKeys: f.drops as string[] as ItemKey[],
+      trackedForAlgorithm: f.trackedForAlgorithm,
+    })),
+  );
+
+  // Only the tier-detail page needs to re-render — the cache write
+  // is the actual mutation here.
+  revalidatePath("/", "layout");
+  return { ok: true };
 }

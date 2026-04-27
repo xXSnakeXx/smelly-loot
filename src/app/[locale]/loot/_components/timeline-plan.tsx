@@ -19,10 +19,12 @@ interface TimelinePlanProps {
   timelines: TimelineForFloor[];
   weeksAhead: number;
   hasPlayers: boolean;
+  tierId: number;
+  computedAt: Date;
 }
 
 /**
- * Forward-planning view for the /loot page's "Plan" tab.
+ * Forward-planning view for the tier-detail Plan tab.
  *
  * Renders one card per floor with a Week × Item grid: rows are
  * upcoming weeks, columns are the items the boss drops. Each cell
@@ -31,18 +33,17 @@ interface TimelinePlanProps {
  * items but the cells stay empty — the operator records those drops
  * manually in the Track tab.
  *
- * The component itself is a Server Component: no interactivity, just
- * data → markup. The plan re-computes automatically whenever a
- * Server Action calls `revalidatePath` (kill toggles, drop awards,
- * BiS edits, page-adjust saves, roster changes, tier-settings edits).
- * For everything else — direct DB edits, multi-tab sessions — the
- * inline `<RefreshButton>` is a manual escape hatch that triggers a
- * fresh RSC fetch via `router.refresh()`.
+ * The plan is read from the `tier_plan_cache` table; nothing
+ * automatic invalidates it. Only the in-card RefreshButton fires
+ * `refreshPlanAction`, which recomputes the simulation and writes
+ * the new snapshot back to the cache.
  */
 export function TimelinePlan({
   timelines,
   weeksAhead,
   hasPlayers,
+  tierId,
+  computedAt,
 }: TimelinePlanProps) {
   const t = useTranslations("loot.plan");
   const tFloor = useTranslations("loot.floor");
@@ -60,10 +61,17 @@ export function TimelinePlan({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          {t("description", { weeksAhead })}
-        </p>
-        <RefreshButton />
+        <div className="flex flex-col gap-1">
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            {t("description", { weeksAhead })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t("computedAt", {
+              relative: relativeFromNow(computedAt),
+            })}
+          </p>
+        </div>
+        <RefreshButton tierId={tierId} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -134,4 +142,25 @@ export function TimelinePlan({
       </div>
     </div>
   );
+}
+
+/**
+ * Format a date relative to now in a small, JS-only fashion. Avoids
+ * pulling in a heavier i18n date helper for the single string the
+ * Plan tab needs. The output is one of:
+ *   - "just now"       (< 30s)
+ *   - "Xm ago"         (< 60min)
+ *   - "Xh ago"         (< 24h)
+ *   - "Xd ago"         (>= 1 day)
+ */
+function relativeFromNow(when: Date): string {
+  const diffMs = Date.now() - when.getTime();
+  const diffSec = Math.max(0, Math.floor(diffMs / 1000));
+  if (diffSec < 30) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}h ago`;
+  const diffDay = Math.floor(diffHour / 24);
+  return `${diffDay}d ago`;
 }
