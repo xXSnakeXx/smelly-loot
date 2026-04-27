@@ -36,6 +36,13 @@
       "when": 1777300000000,
       "tag": "0004_update_default_extreme_crafted_ilvs",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1777400000000,
+      "tag": "0005_tier_plan_cache",
+      "breakpoints": true
     }
   ]
 }

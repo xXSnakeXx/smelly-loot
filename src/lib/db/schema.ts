@@ -393,3 +393,32 @@ export const pageAdjust = sqliteTable(
 
 export type PageAdjust = typeof pageAdjust.$inferSelect;
 export type NewPageAdjust = typeof pageAdjust.$inferInsert;
+
+/**
+ * Persistent cache for the per-tier Plan-tab simulation.
+ *
+ * The Track / Roster / History tabs stay live — their server
+ * actions still fire `revalidatePath` and the corresponding
+ * components re-render on every kill / drop / roster mutation. The
+ * Plan tab is intentionally NOT live: its recommended-recipient
+ * list is sticky until the user explicitly clicks Refresh, so
+ * casual interactions on Track don't reshuffle the next few weeks
+ * of plans under their feet.
+ *
+ * One row per tier. `snapshot` is the JSON-serialised array of
+ * `TimelineForFloor` entries the Plan UI renders directly;
+ * `computed_at` is shown in the UI as "last refreshed N minutes ago"
+ * so the operator can decide if the cache is still meaningful.
+ */
+export const tierPlanCache = sqliteTable("tier_plan_cache", {
+  tierId: integer("tier_id")
+    .primaryKey()
+    .references(() => tier.id, { onDelete: "cascade" }),
+  snapshot: text("snapshot").notNull(),
+  computedAt: integer("computed_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export type TierPlanCache = typeof tierPlanCache.$inferSelect;
+export type NewTierPlanCache = typeof tierPlanCache.$inferInsert;

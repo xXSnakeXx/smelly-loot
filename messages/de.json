@@ -323,9 +323,11 @@
       "weekColumn": "Woche",
       "noRecipient": "—",
       "viaPagesHint": "Spieler hat genug Pages, um sich diesen Slot selbst zu kaufen.",
-      "refresh": "Neu berechnen",
+      "refresh": "Plan neu berechnen",
       "refreshing": "Berechne…",
-      "refreshHint": "Plan vom aktuellen Snapshot neu berechnen. UI-Änderungen aktualisieren automatisch; dieser Button ist für direkte DB-Änderungen oder Multi-Tab-Sessions."
+      "refreshHint": "Plan vom aktuellen Snapshot neu berechnen. Andere Tabs (Tracking, Roster, Historie) aktualisieren automatisch; der Plan-Tab bleibt fix bis du hier klickst.",
+      "refreshError": "Plan-Aktualisierung fehlgeschlagen — bitte erneut versuchen.",
+      "computedAt": "Zuletzt berechnet {relative}"
     },
     "noWeeks": {
       "title": "Noch keine Raid-Woche erfasst.",

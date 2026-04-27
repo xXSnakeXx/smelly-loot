@@ -325,9 +325,11 @@
       "weekColumn": "Week",
       "noRecipient": "—",
       "viaPagesHint": "Player has enough pages to self-buy this slot.",
-      "refresh": "Refresh",
+      "refresh": "Refresh plan",
       "refreshing": "Refreshing…",
-      "refreshHint": "Recompute the plan from the latest snapshot. Edits made via the UI refresh automatically; this button is for direct DB changes or other browser tabs."
+      "refreshHint": "Recompute the plan from the current snapshot. Other tabs (Track, Roster, History) update live; the Plan tab is sticky until you click here.",
+      "refreshError": "Plan refresh failed — please retry.",
+      "computedAt": "Last refreshed {relative}"
     },
     "noWeeks": {
       "title": "No raid weeks recorded yet.",

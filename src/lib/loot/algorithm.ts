@@ -172,7 +172,7 @@ export function scoreDrop(
   const scores = players.map((player) => {
     const breakdown = isMaterial
       ? scoreMaterial(player, context)
-      : scoreGear(player, context);
+      : scoreGear(player, players, context);
     return { player, score: breakdown.total, breakdown };
   });
 
@@ -194,6 +194,7 @@ export function scoreDrop(
 
 function scoreGear(
   player: PlayerSnapshot,
+  allPlayers: ReadonlyArray<PlayerSnapshot>,
   context: DropContext,
 ): ScoreBreakdown {
   const dropSource = context.drop_source ?? "Savage";
@@ -222,12 +223,23 @@ function scoreGear(
   // gives the number of slots covered by self-purchase, picked in
   // a deterministic floor-item order. The score for any specific
   // item then only counts slots that are NOT in that set.
-  const purchasedSlots = computePurchasedSlots(
-    player,
-    context.tier,
-    context.floorNumber,
-    dropSource,
-  );
+  const { purchased: purchasedSlots, totalUnmet: floorTotalUnmet } =
+    computePurchasedSlots(
+      player,
+      allPlayers,
+      context.tier,
+      context.floorNumber,
+      dropSource,
+    );
+  // "Fully self-served": the player wanted at least one slot on
+  // this floor, and every single one is covered by simulated
+  // self-purchase. They drop out of the competition for any drop
+  // on this floor — giving them the drop would just leak a
+  // recommendation away from a teammate who genuinely still needs
+  // it. Drops only land on this player if no-one else needs it
+  // either (in which case the deterministic tiebreaker fills in).
+  const fullySelfServed =
+    floorTotalUnmet > 0 && purchasedSlots.size === floorTotalUnmet;
   const buyPower = cost
     ? Math.floor((player.pages.get(cost.floor) ?? 0) / cost.cost)
     : 0;
@@ -268,9 +280,14 @@ function scoreGear(
   // Raw "slots needing the drop" minus the discount applied to the
   // self-purchased ones. Float-valued so a 1-slot Earring drop with
   // the slot in purchasedSlots gives 0.5 (not 0); a fresh Ring drop
-  // with both slots un-purchased gives 2.
-  const effectiveNeed =
-    slotsWantingNotPurchased + slotsWantingPurchased * (1 - PURCHASE_DISCOUNT);
+  // with both slots un-purchased gives 2. If the player is fully
+  // self-served on this floor (every want covered), zero out the
+  // effective need so the algorithm doesn't bother recommending
+  // them — every drop they'd theoretically receive should go to a
+  // teammate with genuine remaining need instead.
+  const effectiveNeed = fullySelfServed
+    ? 0
+    : slotsWantingNotPurchased + slotsWantingPurchased * (1 - PURCHASE_DISCOUNT);
 
   const desiredIlv = ilvForSource(context.tier, dropSource) ?? 0;
   const currentIlvOfFirstNeedingSlot = slotsForItem
@@ -381,8 +398,7 @@ const SLOTS_FOR_MATERIAL: Record<MaterialKey, readonly Slot[]> = {
 
 /**
  * Pre-computes the set of slots a player is assumed to "buy"
- * with their accumulated pages on a given floor, in deterministic
- * floor-item order.
+ * with their accumulated pages on a given floor.
  *
  * The simulation assumes every player spends their pages every
  * week on the slots they still need — purchases are first-come in
@@ -399,12 +415,25 @@ const SLOTS_FOR_MATERIAL: Record<MaterialKey, readonly Slot[]> = {
  *
  * The function is exported for unit-tests and the scoring engine.
  */
+export interface PurchaseSimulation {
+  /** Slots assumed to have been bought with pages. */
+  purchased: Set<Slot>;
+  /**
+   * Total number of slots the player wanted on this floor. Used by
+   * the scorer to decide if the player is "fully self-served" for
+   * the floor (every want covered by self-purchase → score 0 on
+   * any drop).
+   */
+  totalUnmet: number;
+}
+
 export function computePurchasedSlots(
   player: PlayerSnapshot,
+  allPlayers: ReadonlyArray<PlayerSnapshot>,
   tier: TierSnapshot,
   floorNumber: number,
   dropSource: BisSource,
-): Set<Slot> {
+): PurchaseSimulation {
   // Build a slot → item lookup so we can map a slot back to the item
   // it belongs to (and thus to its floor and cost). Pre-computed
   // per call because SLOTS_BY_ITEM_KEY is small (12 slots) — no
@@ -417,19 +446,15 @@ export function computePurchasedSlots(
   }
 
   // Walk the SLOTS list in its canonical declared order (Weapon →
-  // Offhand → Head → ... → Ring1 → Ring2) and pick out the slots
+  // Offhand → Head → ... → Ring1 → Ring2) and capture every slot
   // that:
-  //   1. belong to a gear item on the requested floor,
+  //   1. belongs to a gear item on the requested floor,
   //   2. the player wants the drop source for, and
   //   3. they don't already wear the drop source in.
   //
   // Iterating SLOTS rather than `tier.buyCostByItem` makes the
-  // purchase order deterministic regardless of whichever order
-  // Drizzle returns the buy-cost rows in (alphabetical, in the
-  // current build, which silently changed the simulation result
-  // from intended Earring-first to actually-Bracelet-first when
-  // we relied on Map insertion order).
-  const unmetSlots: Slot[] = [];
+  // walk deterministic regardless of Drizzle's row order.
+  const playerUnmet: Slot[] = [];
   let perItemCost: number | undefined;
   for (const slot of SLOTS) {
     const itemKey = slotToItem.get(slot);
@@ -445,17 +470,55 @@ export function computePurchasedSlots(
       (player.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource &&
       (player.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) !== dropSource
     ) {
-      unmetSlots.push(slot);
+      playerUnmet.push(slot);
     }
   }
-  if (unmetSlots.length === 0 || perItemCost === undefined) return new Set();
+  if (playerUnmet.length === 0 || perItemCost === undefined) return { purchased: new Set(), totalUnmet: 0 };
+
+  // Compute the team-wide demand per slot — the number of
+  // OTHER players that also still want the drop source in that
+  // slot. The simulation assumes each player spends their pages
+  // on the team's tightest bottleneck first: if six raiders need
+  // a Savage Ring1 but only one needs a Savage Earring, every
+  // page-rich raider buys a Ring (clearing the bottleneck) before
+  // anything else, leaving the rare Earring drop for the one
+  // raider that still needs it.
+  //
+  // The player's OWN unmet count counts towards the demand so
+  // every shared slot at least registers as 1, and ties tend
+  // towards the canonical SLOTS order (lower index first) for
+  // determinism.
+  const teamDemandBySlot = new Map<Slot, number>();
+  for (const slot of playerUnmet) {
+    let demand = 0;
+    for (const p of allPlayers) {
+      if (
+        (p.bisDesired.get(slot) ?? NEUTRAL_SOURCE) === dropSource &&
+        (p.bisCurrent.get(slot) ?? NEUTRAL_SOURCE) !== dropSource
+      ) {
+        demand += 1;
+      }
+    }
+    teamDemandBySlot.set(slot, demand);
+  }
+  playerUnmet.sort((a, b) => {
+    const demandDiff =
+      (teamDemandBySlot.get(b) ?? 0) - (teamDemandBySlot.get(a) ?? 0);
+    if (demandDiff !== 0) return demandDiff;
+    return SLOTS.indexOf(a) - SLOTS.indexOf(b);
+  });
 
   const pages = player.pages.get(floorNumber) ?? 0;
   const buyPower = Math.floor(pages / perItemCost);
-  if (buyPower === 0) return new Set();
+  if (buyPower === 0) return { purchased: new Set(), totalUnmet: playerUnmet.length };
 
-  // Take the first `buyPower` slots, capped at the number of unmet
-  // slots — pages can't conjure need that doesn't exist.
-  const purchaseCount = Math.min(buyPower, unmetSlots.length);
-  return new Set(unmetSlots.slice(0, purchaseCount));
+  // Take the first `buyPower` slots from the demand-sorted list —
+  // i.e. the player's contribution to the team's tightest
+  // bottlenecks. Capped at the player's own unmet count because
+  // pages can't conjure need that doesn't exist.
+  const purchaseCount = Math.min(buyPower, playerUnmet.length);
+  return {
+    purchased: new Set(playerUnmet.slice(0, purchaseCount)),
+    totalUnmet: playerUnmet.length,
+  };
 }

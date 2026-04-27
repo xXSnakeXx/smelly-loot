@@ -406,16 +406,15 @@ describe("plan ↔ track parity", () => {
     expect(w1).toEqual(["Solo", "Solo", "Solo", "Solo"]);
   });
 
-  it("page-aware purchase simulation discounts but doesn't skip the only candidate (v2.2.2)", () => {
-    // v2.2.2: `computePurchasedSlots` simulates a self-purchase per
-    // (player, floor) per week — but unlike v2.2.1 the slot
-    // contributes 0.5 to effective_need rather than 0. A drop
-    // therefore still gets recommended (the team can't guarantee
-    // every player will actually spend their pages on this slot;
-    // someone has to take the drop if it falls). Loner ends week 1
-    // with 3 Floor-1 pages — enough to buy the Earring — and is
-    // the only candidate, so the algorithm hands them the drop at
-    // a discounted score.
+  it("fully self-served sole candidate gets no recommendation (v2.3)", () => {
+    // v2.3 — when a single-player tier has only one needed slot
+    // and the player's pages cover it via simulated self-
+    // purchase, the algorithm zeros their score (they're fully
+    // self-served on that floor) and returns no recipient. With
+    // no other candidate, the drop falls to nobody on the Plan
+    // tab — same as the long-running pre-v2.2 behaviour, but for
+    // the right reason: the player IS going to buy the slot, so
+    // recommending the drop to them would just leak it.
     const tier = makeTier();
     const players: PlayerSnapshot[] = [
       makePlayer({
@@ -439,8 +438,6 @@ describe("plan ↔ track parity", () => {
       ],
     });
     const earring = plan[0]?.weeks[0]?.drops[0];
-    expect(earring?.recipientName).toBe("Loner");
-    // Score is positive but reflects the 0.5 effective-need discount.
-    expect((earring?.score ?? 0) > 0).toBe(true);
+    expect(earring?.recipientName).toBeNull();
   });
 });
