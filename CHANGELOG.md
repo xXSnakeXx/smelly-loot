@@ -7,6 +7,38 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-04-26
+
+### Changed
+
+- **Inline-edit BiS matrix** is now the only Roster-tab surface.
+  The previous read-only matrix + separate row-action table is
+  gone; clicking any matrix cell pops a Base UI popover with two
+  Selects (Desired / Current source) and saves on every change.
+  No more round-trips through the per-player BiS editor for
+  routine cell edits.
+
+  Layout changes that fall out of the new design:
+  - Sticky top header + sticky leftmost player column so names
+    and slot codes stay anchored while scrolling a wide grid.
+  - Players sorted Tank → Healer → Melee → Phys-Range → Caster
+    to match the spreadsheet's row order.
+  - Player column shows name + role-coloured job chip; the name
+    still links to the team-level identity page.
+  - Per-row "Remove from tier" lives in the rightmost cell.
+  - Tier-detail container width raised from 1280 px to 1536 px
+    so the full grid fits without horizontal scroll on a typical
+    raid-leader monitor.
+
+  The `RosterTable` row-action card is dropped — every action it
+  hosted (jump to identity / remove from tier / per-slot BiS
+  edit) is now reachable from the matrix in one or two clicks.
+
+### Added
+
+- New `Popover` primitive in `src/components/ui/popover.tsx`
+  wrapping Base UI's anchored popup for inline editors.
+
 ## [2.4.0] - 2026-04-26
 
 ### Added

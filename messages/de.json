@@ -132,8 +132,16 @@
     },
     "matrix": {
       "title": "BiS-Übersicht",
-      "description": "Schnellübersicht ähnlich zum Spreadsheet. Jede Zelle zeigt oben die gewünschte Quelle, unten die aktuelle; die Farbe folgt der Spreadsheet-Legende. Klick auf den Namen öffnet den Editor pro Slot.",
+      "description": "Klick auf eine Zelle, um die gewünschte oder aktuelle Quelle direkt zu bearbeiten. Klick auf den Namen öffnet die Spieler-Detailseite.",
       "playerColumn": "Spieler",
+      "removeColumn": "Entfernen",
+      "removeRow": "Aus Tier entfernen",
+      "cell": {
+        "desired": "Gewollt",
+        "current": "Aktuell",
+        "clickToEdit": "Wähle geplante und getragene Quelle. Speichert beim Ändern.",
+        "saveError": "Speichern fehlgeschlagen — bitte erneut versuchen."
+      },
       "legend": {
         "bisAchieved": "BiS erreicht",
         "needsUpgrade": "Upgrade nötig",
@@ -142,7 +150,8 @@
         "behind": "Zurück",
         "significantGap": "Großer Abstand"
       }
-    }
+    },
+    "memberCount": "{count} Spieler im Tier"
   },
   "players": {
     "title": "Spieler",
