@@ -391,6 +391,7 @@
     "drop": {
       "recommended": "Recommended:",
       "noEligible": "No eligible recipient — every player is either covered by pages or doesn't want this drop.",
+      "noBisNeeders": "No player has this item as BiS — drop cannot be assigned.",
       "awarded": "Awarded to {name}",
       "accept": "Award to {name}",
       "manual": "Other player…",
@@ -409,6 +410,7 @@
       "killUndone": "Boss kill undone.",
       "dropAwarded": "Drop assigned to {name}.",
       "dropUndone": "Drop assignment undone.",
+      "notBisError": "{name} doesn't need this item for BiS — award rejected.",
       "error": "Something went wrong — please retry."
     }
   }

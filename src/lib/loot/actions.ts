@@ -39,7 +39,8 @@ import {
 export type LootActionResult =
   | { ok: true }
   | { ok: false; reason: "validation"; errors: Record<string, string> }
-  | { ok: false; reason: "conflict"; message: string };
+  | { ok: false; reason: "conflict"; message: string }
+  | { ok: false; reason: "not_bis"; message: string };
 
 function fieldErrors(error: z.ZodError): Record<string, string> {
   const flat = z.flattenError(error);
@@ -207,12 +208,23 @@ export async function awardLootDropAction(
   }
 
   // Compute target_slot + previous_current_source for the
-  // auto-equip side of the award. If we can't find a slot to fill
-  // (player already at source on every candidate), record both as
-  // NULL so undo knows there's nothing to roll back. The award
-  // itself still happens — the player got the loot, even if it
-  // doesn't change their bisCurrent.
+  // auto-equip side of the award. v3.2.1: if no eligible slot is
+  // found (recipient doesn't want the source on any compatible
+  // slot, or already has it everywhere), REJECT the award —
+  // the algorithm's promise is "fastest path to BiS", so loot
+  // shouldn't be persisted on a non-BiS recipient. Override-style
+  // awards from the Track tab go through this same gate, so a
+  // manual mistake doesn't sneak in either.
   const equip = await resolveAutoEquip(data.recipientId, data.itemKey);
+  if (!equip) {
+    return {
+      ok: false,
+      reason: "not_bis",
+      message:
+        "Recipient does not need this drop for BiS. Awards only go to players whose desired source matches the drop on at least one open slot.",
+    };
+  }
+
   // The tier this raid_week belongs to, needed for the bis_choice
   // upsert (bis_choice is keyed on (player_id, tier_id, slot)).
   const tierIdRow = await db
@@ -222,7 +234,7 @@ export async function awardLootDropAction(
     .limit(1);
   const tierId = tierIdRow[0]?.tierId;
 
-  if (equip && tierId !== undefined) {
+  if (tierId !== undefined) {
     // Update bis_choice.current_source for the equipped slot.
     await db
       .update(bisChoice)
@@ -243,8 +255,8 @@ export async function awardLootDropAction(
     recipientId: data.recipientId,
     paidWithPages: data.paidWithPages,
     pickedByAlgorithm: data.pickedByAlgorithm,
-    targetSlot: equip?.targetSlot ?? null,
-    previousCurrentSource: equip?.previousCurrentSource ?? null,
+    targetSlot: equip.targetSlot,
+    previousCurrentSource: equip.previousCurrentSource,
     scoreSnapshot: snapshot,
     notes: data.notes ?? null,
   });
@@ -263,9 +275,16 @@ export async function awardLootDropAction(
 /**
  * Resolve which slot the awarded item should land on for the
  * recipient and which `bis_choice.current_source` value the row
- * had before. Returns `null` if no eligible slot exists (player
- * already at source on every candidate, or no bis_choice rows
- * are registered for the tier yet).
+ * had before. Returns `null` if no eligible slot exists.
+ *
+ * "Eligible" = the recipient has `bisDesired = sourceForItem(itemKey)`
+ * on at least one of the candidate slots AND doesn't already have
+ * that source equipped. v3.2.1 tightens the original loose check
+ * (which only required `bisCurrent !== source`) so that a manual
+ * override can't accidentally promote a slot the player explicitly
+ * does NOT want at the drop's source — the algorithm's promise is
+ * "fastest path to BiS", not "promote any slot just because the
+ * recipient took the loot".
  */
 async function resolveAutoEquip(
   playerId: number,
@@ -282,6 +301,7 @@ async function resolveAutoEquip(
   const rows = await db
     .select({
       slot: bisChoice.slot,
+      desiredSource: bisChoice.desiredSource,
       currentSource: bisChoice.currentSource,
     })
     .from(bisChoice)
@@ -297,6 +317,7 @@ async function resolveAutoEquip(
   for (const slot of candidateSlots) {
     const row = rows.find((r) => r.slot === slot);
     if (!row) continue;
+    if (row.desiredSource !== newSource) continue; // not BiS-desired
     if (row.currentSource === newSource) continue; // already at source
     return {
       targetSlot: slot,

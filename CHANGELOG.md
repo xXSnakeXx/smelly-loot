@@ -7,6 +7,45 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-04-26
+
+### Fixed
+
+- **Awards now strictly require a BiS need.** v3.2.0 auto-equip
+  only checked `bisCurrent !== source` when picking a slot; this
+  meant a manual override could legitimately award a Savage drop
+  to a recipient whose `bisDesired` for that slot was something
+  else (e.g. TomeUp), causing the algorithm to "promote" a slot
+  the player explicitly didn't want. The user-visible symptom
+  was loot getting distributed to people who didn't need it for
+  BiS, contradicting the algorithm's stated objective of
+  "fastest path to BiS".
+
+  v3.2.1 tightens both gates:
+
+  - `resolveAutoEquip` now requires `bisDesired === source` AND
+    `bisCurrent !== source` on the candidate slot. Returns
+    `null` if no candidate matches.
+  - `awardLootDropAction` REJECTS the award outright with a new
+    `not_bis` result reason if `resolveAutoEquip` returns null —
+    the loot_drop row is not inserted, the bis_choice is not
+    updated, and the toast surfaces the rejection to the
+    operator ("Brad doesn't need this item for BiS — award
+    rejected.").
+  - The Track-tab override list is filtered: only players whose
+    `bisDesired` for at least one of the item's candidate slots
+    matches the drop's source AND who don't already have that
+    source equipped are listed in the manual picker. Untracked
+    floors keep their flat list (no algorithmic gate there).
+  - `DropCard` distinguishes "no eligible recipient yet — pages
+    cover this slot" from "no player wants this item as BiS"
+    via two distinct messages.
+
+### Added
+
+- New i18n strings: `loot.drop.noBisNeeders` and
+  `loot.toasts.notBisError` (de + en).
+
 ## [3.2.0] - 2026-04-26
 
 ### Added

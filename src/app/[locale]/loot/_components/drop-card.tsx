@@ -93,6 +93,8 @@ export function DropCard({
       if (result.ok) {
         toast.success(tToast("dropAwarded", { name: recipientName }));
         setPickerOpen(false);
+      } else if (result.reason === "not_bis") {
+        toast.error(tToast("notBisError", { name: recipientName }));
       } else {
         toast.error(tToast("error"));
       }
@@ -187,20 +189,24 @@ export function DropCard({
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-muted-foreground">{t("noEligible")}</p>
-          <ManualPicker
-            raidWeekId={raidWeekId}
-            floorId={floorId}
-            itemKey={itemKey}
-            itemLabel={itemLabel}
-            rankings={rankings}
-            open={pickerOpen}
-            onOpenChange={setPickerOpen}
-            onPick={(playerId, playerName) =>
-              award(playerId, playerName, false)
-            }
-            pending={pending}
-          />
+          <p className="text-xs text-muted-foreground">
+            {rankings.length > 0 ? t("noEligible") : t("noBisNeeders")}
+          </p>
+          {rankings.length > 0 ? (
+            <ManualPicker
+              raidWeekId={raidWeekId}
+              floorId={floorId}
+              itemKey={itemKey}
+              itemLabel={itemLabel}
+              rankings={rankings}
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              onPick={(playerId, playerName) =>
+                award(playerId, playerName, false)
+              }
+              pending={pending}
+            />
+          ) : null}
         </div>
       )}
     </div>

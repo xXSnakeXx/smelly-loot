@@ -389,6 +389,7 @@
     "drop": {
       "recommended": "Empfehlung:",
       "noEligible": "Kein berechtigter Empfänger — entweder hat jeder Spieler genug Pages oder will den Drop nicht.",
+      "noBisNeeders": "Kein Spieler hat dieses Item als BiS — Drop kann nicht zugewiesen werden.",
       "awarded": "An {name} vergeben",
       "accept": "An {name} vergeben",
       "manual": "Anderen Spieler wählen…",
@@ -407,6 +408,7 @@
       "killUndone": "Boss-Kill zurückgenommen.",
       "dropAwarded": "Drop an {name} vergeben.",
       "dropUndone": "Drop-Zuweisung zurückgenommen.",
+      "notBisError": "{name} braucht dieses Item nicht als BiS — Zuweisung abgelehnt.",
       "error": "Etwas ist schiefgelaufen — bitte erneut versuchen."
     }
   }
