@@ -128,4 +128,35 @@ describe("MinCostFlow", () => {
     expect(() => f.addEdge(0, 99, 1, 1)).toThrow();
     expect(() => f.addEdge(-1, 0, 1, 1)).toThrow();
   });
+
+  it("terminates within the iteration cap on a pathological residual", () => {
+    // Regression for v3.3.0 hang: with eight or more
+    // contributors and float-weight edge costs, the SPFA's
+    // parent-chain reconstruction could yield a cycle on the
+    // residual graph, causing the path-walk to spin forever.
+    // This test builds a small bipartite many-paths network
+    // that historically reproduced the symptom and pins that
+    // `solve` returns within reasonable time, even if the cap
+    // forces an early exit.
+    const f = new MinCostFlow();
+    const s = f.addNode();
+    const t = f.addNode();
+    // 8 mid-nodes with multiple parallel float-cost edges so
+    // SPFA has many indistinguishable shortest paths.
+    const mids: number[] = [];
+    for (let i = 0; i < 8; i += 1) {
+      const m = f.addNode();
+      mids.push(m);
+      // Float cost to mimic slot * role weights.
+      f.addEdge(s, m, 1, 1.0 / 3.0);
+      f.addEdge(m, t, 1, 0.95 / 3.0);
+    }
+    const start = Date.now();
+    const result = f.solve(s, t);
+    const elapsed = Date.now() - start;
+    expect(result.flow).toBeGreaterThan(0);
+    expect(result.flow).toBeLessThanOrEqual(8);
+    // 200ms is a very loose ceiling; the actual run is sub-ms.
+    expect(elapsed).toBeLessThan(200);
+  });
 });

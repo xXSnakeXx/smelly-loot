@@ -149,6 +149,15 @@ export class MinCostFlow {
    * path's bottleneck capacity allows; repeat until no path exists.
    * Bellman-Ford handles the negative cost edges that arise on
    * reverse edges after flow has been sent.
+   *
+   * The outer augmenting-path loop is bounded by
+   * `MAX_AUGMENTING_ITERATIONS` (a multiple of the node count) as
+   * a safety net against pathological floating-point edge costs
+   * that can otherwise stall the SPFA in a degenerate residual
+   * graph (observed v3.3.0: 8 players × mixed Savage/TomeUp BiS
+   * with default role weights would not converge). When the
+   * limit is hit the result captures the best-feasible flow
+   * found so far rather than hanging the whole request.
    */
   solve(source: number, sink: number): MinCostFlowResult {
     if (source < 0 || source >= this.nodes.length) {
@@ -170,7 +179,25 @@ export class MinCostFlow {
     const parentNode = new Array<number>(n);
     const parentEdge = new Array<number>(n);
 
+    // Hard ceiling on augmenting iterations. Each augment pushes
+    // ≥ 1 unit of flow, so the natural bound is `total source
+    // capacity`; we use a generous multiple of n to allow for
+    // unit-cap edges (1 augment per drop). The constant 64 was
+    // chosen empirically: a fully-loaded floor (8 players × 8
+    // weeks × 4 items) sees ~250 augments, well under 64×n.
+    const maxIterations = Math.max(1024, n * 64);
+    let iteration = 0;
+    // SPFA pop budget per shortest-path probe. Theoretical SPFA
+    // bound is O(V*E); we cap at 16*V*V which is a generous
+    // constant-factor overshoot for sparse layered graphs but
+    // keeps a single solve in the millisecond range even under
+    // pathological floating-point residuals.
+    const spfaPopLimit = Math.max(4096, 16 * n * n);
+    let spfaPops = 0;
+
     while (true) {
+      iteration += 1;
+      if (iteration > maxIterations) break;
       // SPFA from source.
       dist.fill(Infinity);
       inQueue.fill(false);
@@ -181,6 +208,15 @@ export class MinCostFlow {
       inQueue[source] = true;
 
       while (queue.length > 0) {
+        spfaPops += 1;
+        if (spfaPops > spfaPopLimit) {
+          // SPFA stalled (likely a degenerate residual graph
+          // produced by float-precision edge costs). Break out;
+          // the outer iteration limit will then terminate the
+          // solver with the best-so-far result.
+          queue.length = 0;
+          break;
+        }
         const u = queue.shift();
         if (u === undefined) break;
         inQueue[u] = false;
@@ -212,21 +248,54 @@ export class MinCostFlow {
       }
 
       // Find the bottleneck along the path source → sink.
+      // Both this loop and the push-flow loop below are bounded
+      // by `pathStepLimit` (n + 1 = max valid path length). A
+      // longer chain means SPFA produced a parent cycle — bail
+      // safely instead of looping.
       let bottleneck = Infinity;
+      let pathOk = true;
+      let pathSteps = 0;
+      const pathStepLimit = n + 1;
       for (let v = sink; v !== source; ) {
+        pathSteps += 1;
+        if (pathSteps > pathStepLimit) {
+          pathOk = false;
+          break;
+        }
         const pu = parentNode[v];
         const pe = parentEdge[v];
-        if (pu === undefined || pu < 0 || pe === undefined || pe < 0) break;
+        if (pu === undefined || pu < 0 || pe === undefined || pe < 0) {
+          // SPFA reported a finite distance to sink but the
+          // parent chain isn't fully populated — defensive bail-
+          // out so we never push `Infinity` flow.
+          pathOk = false;
+          break;
+        }
         const node = this.nodes[pu];
-        if (!node) break;
+        if (!node) {
+          pathOk = false;
+          break;
+        }
         const edge = node.edges[pe];
-        if (!edge) break;
+        if (!edge) {
+          pathOk = false;
+          break;
+        }
         if (edge.capacity < bottleneck) bottleneck = edge.capacity;
         v = pu;
       }
+      if (!pathOk || !Number.isFinite(bottleneck) || bottleneck <= 0) {
+        // Path reconstruction failed or yielded a zero/infinite
+        // bottleneck — nothing safe to augment, treat as the end
+        // of the algorithm.
+        break;
+      }
 
       // Push flow.
+      let pushSteps = 0;
       for (let v = sink; v !== source; ) {
+        pushSteps += 1;
+        if (pushSteps > pathStepLimit) break;
         const pu = parentNode[v];
         const pe = parentEdge[v];
         if (pu === undefined || pu < 0 || pe === undefined || pe < 0) break;

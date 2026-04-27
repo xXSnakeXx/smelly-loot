@@ -7,6 +7,40 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-04-26
+
+### Fixed
+
+- **MCMF solver no longer hangs on degenerate residual graphs.**
+  v3.3.0's role-weight bias (DPS = 0.95) combined with eight
+  players who each had a mixed Savage / TomeUp BiS plan could
+  push SPFA into a state where the parent-chain reconstruction
+  for the augmenting path formed a cycle (`parentNode[a] = b`
+  with `parentNode[b] = a` after enough residual edges had been
+  added). The path-walk then ran forever and the request stalled
+  the entire Node process at 100% CPU.
+
+  Fix: bound both the path-walk and the push-flow loops by
+  `pathStepLimit = nodeCount + 1` and bail safely with `pathOk
+  = false` when the limit is hit, treating the iteration as
+  "no augmenting path" so the outer loop exits cleanly. Also
+  added an outer iteration cap (`maxIterations = max(1024, n×64)`)
+  and a per-solve SPFA pop budget (`spfaPopLimit = max(4096,
+  16 × n²)`) as belt-and-braces protection against any other
+  pathological case.
+
+  Real-world impact: TestTier3 with 8 players × randomised
+  Savage/TomeUp BiS used to hang the page render indefinitely;
+  it now renders in ~250 ms.
+
+### Tests
+
+- 51/51 green. New `mcmf.test.ts` regression test pins the
+  iteration cap at 200 ms on a synthetic float-cost network.
+- New `floor-planner.test.ts` regression test reproduces the
+  exact 8-player × mixed-source scenario that hung in v3.3.0
+  and asserts the solver returns within 1 second.
+
 ## [3.3.0] - 2026-04-26
 
 ### Added

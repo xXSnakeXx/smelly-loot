@@ -606,4 +606,59 @@ describe("computeFloorPlan", () => {
     const earringDrop2 = planFlipped.drops.find((d) => d.itemKey === "Earring");
     expect(earringDrop2?.recipientName).toBe("Healer");
   });
+
+  it("v3.3.1 regression: 8 players × mixed sources + default weights does not hang", () => {
+    // Reproduces the v3.3.0 production hang: with 8 players who
+    // each want a randomly-mixed BiS map (Savage on some slots,
+    // TomeUp on others, plus Ring1=Savage / Ring2=TomeUp pairs)
+    // and the default role-weight bias (DPS = 0.95), the MCMF
+    // residual graph could produce a parent-chain cycle that
+    // stalled the path reconstruction. With the v3.3.1 cycle
+    // guard the solver returns in milliseconds.
+    const tier = makeTier();
+    const roles = [
+      "tank",
+      "tank",
+      "healer",
+      "healer",
+      "melee",
+      "phys_range",
+      "caster",
+      "caster",
+    ] as const;
+    const players: PlayerSnapshot[] = roles.map((role, i) =>
+      makePlayer({
+        id: i + 1,
+        name: `P${i}`,
+        gearRole: role,
+        bisDesired: {
+          Earring: i % 2 === 0 ? "Savage" : "TomeUp",
+          Necklace: i % 2 === 0 ? "TomeUp" : "Savage",
+          Bracelet: i % 3 === 0 ? "Savage" : "TomeUp",
+          Ring1: "Savage",
+          Ring2: "TomeUp",
+        },
+        bisCurrent: {
+          Earring: "Crafted",
+          Necklace: "Crafted",
+          Bracelet: "Crafted",
+          Ring1: "Crafted",
+          Ring2: "Crafted",
+        },
+      }),
+    );
+    const start = Date.now();
+    const plan = computeFloorPlan(FLOOR_1, players, tier, {
+      startingWeekNumber: 1,
+      weeksAhead: 8,
+      alreadyKilledFloors: new Set(),
+      // Defaults: DPS gets 0.95, others 1.0. Triggered the bug.
+    });
+    const elapsed = Date.now() - start;
+    expect(plan.drops.length).toBeGreaterThan(0);
+    // 1 second is a very loose ceiling; the real run is single-
+    // digit milliseconds. Without the cycle guard this would
+    // exceed test-runner timeouts.
+    expect(elapsed).toBeLessThan(1000);
+  });
 });
