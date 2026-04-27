@@ -10,8 +10,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { ItemKey } from "@/lib/ffxiv/slots";
 import type { FloorPlan } from "@/lib/loot/floor-planner";
 
+import { BuyAssignButton } from "./buy-assign-button";
 import { RefreshButton } from "./refresh-button";
 
 interface TimelinePlanProps {
@@ -20,6 +22,17 @@ interface TimelinePlanProps {
   hasPlayers: boolean;
   tierId: number;
   computedAt: Date;
+  /**
+   * The active raid week's id, or null if no raid_week row exists
+   * yet on the tier. Buy-Assign needs this to attach the
+   * loot_drop to a week.
+   */
+  currentWeekId: number | null;
+  /**
+   * Floor number → floor id lookup. Buy-Assign resolves the
+   * floor of the item being bought from this map.
+   */
+  floorIdByNumber: Record<number, number>;
 }
 
 /**
@@ -45,6 +58,8 @@ export function TimelinePlan({
   hasPlayers,
   tierId,
   computedAt,
+  currentWeekId,
+  floorIdByNumber,
 }: TimelinePlanProps) {
   const t = useTranslations("loot.plan");
   const tFloor = useTranslations("loot.floor");
@@ -165,6 +180,9 @@ export function TimelinePlan({
                         <TableHead className="text-xs">
                           {tBuys("pagesColumn")}
                         </TableHead>
+                        <TableHead className="w-[100px] text-xs">
+                          {tBuys("actionColumn")}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -192,6 +210,17 @@ export function TimelinePlan({
                           </TableCell>
                           <TableCell className="font-mono text-xs">
                             {buy.pagesUsed}
+                          </TableCell>
+                          <TableCell>
+                            <BuyAssignButton
+                              raidWeekId={currentWeekId}
+                              floorId={
+                                floorIdByNumber[plan.floorNumber] ?? null
+                              }
+                              itemKey={buy.itemKey as ItemKey}
+                              recipientId={buy.playerId}
+                              recipientName={buy.playerName}
+                            />
                           </TableCell>
                         </TableRow>
                       ))}

@@ -1,8 +1,14 @@
 import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { bossKill, floor as floorTable, tierPlanCache } from "@/lib/db/schema";
-import type { ItemKey } from "@/lib/ffxiv/slots";
+import {
+  bossKill,
+  floor as floorTable,
+  tierPlanCache,
+  tier as tierTable,
+} from "@/lib/db/schema";
+import type { GearRole } from "@/lib/ffxiv/jobs";
+import type { ItemKey, Slot } from "@/lib/ffxiv/slots";
 
 import { computeFloorPlan, type FloorPlan } from "./floor-planner";
 import {
@@ -53,10 +59,19 @@ export async function refreshPlan(
     trackedForAlgorithm: boolean;
   }>,
 ): Promise<CachedPlan> {
-  const [snapshots, tierSnapshot, currentWeek] = await Promise.all([
+  const [snapshots, tierSnapshot, currentWeek, tierRow] = await Promise.all([
     loadPlayerSnapshots(tierId),
     loadTierSnapshot(tierId),
     findCurrentRaidWeek(tierId),
+    db
+      .select({
+        slotWeights: tierTable.slotWeights,
+        roleWeights: tierTable.roleWeights,
+      })
+      .from(tierTable)
+      .where(eq(tierTable.id, tierId))
+      .limit(1)
+      .then((rows) => rows[0]),
   ]);
 
   const startingWeekNumber = currentWeek?.weekNumber ?? 1;
@@ -79,13 +94,30 @@ export async function refreshPlan(
     for (const row of killedRows) alreadyKilledFloors.add(row.floorNumber);
   }
 
-  const floorPlans: FloorPlan[] = floors.map((f) =>
-    computeFloorPlan(f, snapshots, tierSnapshot, {
+  // Per-tier weight overrides — the action layer's tier-settings
+  // form writes to these JSON columns. Falls through to the
+  // hard-coded DEFAULT_*_WEIGHTS when null (legacy tiers).
+  const slotWeights = tierRow?.slotWeights as
+    | Partial<Record<Slot, number>>
+    | undefined;
+  const roleWeights = tierRow?.roleWeights as
+    | Partial<Record<GearRole, number>>
+    | undefined;
+
+  const floorPlans: FloorPlan[] = floors.map((f) => {
+    // exactOptionalPropertyTypes: only include the weight keys
+    // when the tier row actually has them, so the FloorPlanOptions
+    // shape sees `undefined` only as "not set" not "explicitly set
+    // to undefined".
+    const opts: Parameters<typeof computeFloorPlan>[3] = {
       startingWeekNumber,
       weeksAhead: PLAN_WEEKS_AHEAD,
       alreadyKilledFloors,
-    }),
-  );
+      ...(slotWeights ? { slotWeights } : {}),
+      ...(roleWeights ? { roleWeights } : {}),
+    };
+    return computeFloorPlan(f, snapshots, tierSnapshot, opts);
+  });
 
   const computedAt = new Date();
   await db

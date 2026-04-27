@@ -99,20 +99,33 @@ export function jobToGearRole(job: string): GearRole | undefined {
 }
 
 /**
- * Per-role weight for the loot-distribution algorithm.
+ * Default per-role weight for the v3 min-cost-flow loot planner.
  *
- * Decision (Topic 1, 2026-04-25): Tanks, Healers, and Caster DPS share
- * the broader gear pools (4-job Fending / Healing / Casting) and
- * compete on roughly equal footing, so they take the neutral weight.
- * Phys-Ranged DPS gets a small boost; Melee DPS gets a slightly larger
- * one, reflecting both the smaller per-subtype pool and the higher
- * uptime risk. A per-tier slider that overrides this table is on the
- * Phase 2 roadmap.
+ * In the v3 algorithm, edge cost is multiplicative — LOWER value
+ * = cheaper drop edge = the optimiser prefers that role. Defaults
+ * give DPS roles (melee / phys-range / caster) a 0.95 discount,
+ * which translates to "DPS gets first pick when otherwise tied".
+ * Tank and healer stay at 1.0.
+ *
+ * The "ab 2 verbleibenden Items DPS nicht mehr bevorzugen" cap
+ * falls out automatically from the network construction: page-
+ * buy edges already exist for every unfulfilled need, so once a
+ * DPS has only a couple of slots left and their page budget
+ * covers them, drops naturally route to other roles whose
+ * page balance can't cover their remaining needs. No explicit
+ * cap parameter needed.
+ *
+ * v2 used these as multipliers (HIGHER = preferred); v3 inverts
+ * the semantic. This is the source of truth and the tier-settings
+ * UI provides per-tier overrides.
  */
-export const ROLE_WEIGHTS: Record<GearRole, number> = {
+export const DEFAULT_ROLE_WEIGHTS: Record<GearRole, number> = {
   tank: 1.0,
   healer: 1.0,
-  caster: 1.0,
-  phys_range: 1.05,
-  melee: 1.1,
+  melee: 0.95,
+  phys_range: 0.95,
+  caster: 0.95,
 };
+
+/** @deprecated v2 export kept for backwards-compat tests. Use DEFAULT_ROLE_WEIGHTS. */
+export const ROLE_WEIGHTS: Record<GearRole, number> = DEFAULT_ROLE_WEIGHTS;

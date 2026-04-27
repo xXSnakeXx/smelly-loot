@@ -116,6 +116,8 @@ export default async function TierDetailPage({
       hasPlayers={players.length > 0}
       tierId={tier.id}
       computedAt={planComputedAt}
+      currentWeekId={currentWeek?.id ?? null}
+      floorIdByNumber={Object.fromEntries(floors.map((f) => [f.number, f.id]))}
     />
   );
 

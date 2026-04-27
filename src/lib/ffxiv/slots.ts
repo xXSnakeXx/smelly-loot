@@ -113,6 +113,38 @@ export function deriveSourceIlvs(maxIlv: number): Record<BisSource, number> {
 }
 
 /**
+ * Default per-slot priority multipliers for the loot planner.
+ *
+ * The min-cost-flow optimiser uses these to prefer filling
+ * higher-stat-budget slots first when multiple needs compete
+ * for the same drop or material:
+ *   - **Chestpiece + Pants** = 0.85 (highest stat budget on FFXIV
+ *     gear; biggest DPS / mit gain per upgrade).
+ *   - **Weapon** = 0.80 (per-slot, weapon makes the biggest
+ *     single-piece difference; defaults reflect that).
+ *   - **Head** = 0.95 (mid-tier).
+ *   - **Gloves / Boots / accessories / Offhand** = 1.00.
+ *
+ * Stored on the `tier` row as JSON in `tier.slot_weights`; the
+ * planner reads from there with this map as fallback for legacy
+ * tiers that haven't been migrated yet.
+ */
+export const DEFAULT_SLOT_WEIGHTS: Record<Slot, number> = {
+  Weapon: 0.8,
+  Offhand: 1.0,
+  Head: 0.95,
+  Chestpiece: 0.85,
+  Gloves: 1.0,
+  Pants: 0.85,
+  Boots: 1.0,
+  Earring: 1.0,
+  Necklace: 1.0,
+  Bracelet: 1.0,
+  Ring1: 1.0,
+  Ring2: 1.0,
+};
+
+/**
  * Tiny shape the BiS tracker uses to look up a source's iLv on the
  * active tier. Mirrors the columns on the `tier` table; storing
  * verbose camelCase names per source instead of an array keeps the

@@ -12,7 +12,7 @@ import type {
   listLootDropsForWeek,
 } from "@/lib/db/queries-loot";
 import type { listPlayersInTier } from "@/lib/db/queries-players";
-import { type ItemKey, type Slot } from "@/lib/ffxiv/slots";
+import type { ItemKey, Slot } from "@/lib/ffxiv/slots";
 import type { FloorPlan } from "@/lib/loot/floor-planner";
 
 /**

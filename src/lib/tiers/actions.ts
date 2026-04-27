@@ -11,6 +11,7 @@ import {
   floor,
   player as playerTable,
   tierBuyCost,
+  tierPlanCache as tierPlanCacheTable,
   tier as tierTable,
 } from "@/lib/db/schema";
 import { defaultBisChoicesForJob } from "@/lib/ffxiv/bis-defaults";
@@ -41,6 +42,41 @@ const updateTierSchema = z.object({
     .transform((value) => value.trim())
     .refine((value) => value.length > 0, { message: "required" }),
   maxIlv: z.coerce.number().int().min(100).max(2000),
+});
+
+/**
+ * Validation for the tier-weights settings form. Both maps are
+ * stringified JSON in the FormData payload because <input> only
+ * carries strings; we parse and bound-check each value to keep
+ * the planner's edge costs in a sane range (0.1–2.0 inclusive).
+ *
+ * Empty strings or `null` JSON values fall through to the
+ * server-side default fallback (clearing the override).
+ */
+const updateTierWeightsSchema = z.object({
+  tierId: z.coerce.number().int().positive(),
+  slotWeights: z
+    .string()
+    .optional()
+    .transform((raw) => {
+      if (!raw || raw.trim().length === 0) return null;
+      try {
+        return JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }),
+  roleWeights: z
+    .string()
+    .optional()
+    .transform((raw) => {
+      if (!raw || raw.trim().length === 0) return null;
+      try {
+        return JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }),
 });
 
 const createTierSchema = z.object({
@@ -97,6 +133,61 @@ export async function updateTierAction(
       ilvJustNo: ilvs.JustNo,
     })
     .where(eq(tierTable.id, tierId));
+
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/**
+ * Update the per-tier slot/role priority weights for the loot
+ * planner. Both maps are sanity-clamped (0.1 ≤ x ≤ 2.0) before
+ * being persisted as JSON in `tier.slot_weights` /
+ * `tier.role_weights`. Setting either to `null` (empty form
+ * field) clears the override so the planner falls back to the
+ * hard-coded `DEFAULT_*_WEIGHTS` from `slots.ts` / `jobs.ts`.
+ *
+ * The plan cache is invalidated so the next page render
+ * recomputes against the new weights — without this the user
+ * would see stale recommendations based on the prior bias.
+ */
+export async function updateTierWeightsAction(
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = updateTierWeightsSchema.safeParse(
+    Object.fromEntries(formData),
+  );
+  if (!parsed.success) {
+    return { ok: false, errors: fieldErrors(parsed.error) };
+  }
+  const { tierId, slotWeights, roleWeights } = parsed.data;
+
+  // Clamp each weight value to a sane range. Out-of-range values
+  // are silently rounded; null / non-numeric values are dropped.
+  const clamp = (raw: Record<string, unknown> | null) => {
+    if (!raw) return null;
+    const out: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      const num = typeof value === "number" ? value : Number(value);
+      if (!Number.isFinite(num)) continue;
+      out[key] = Math.max(0.1, Math.min(2.0, num));
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  };
+
+  await db
+    .update(tierTable)
+    .set({
+      slotWeights: clamp(slotWeights),
+      roleWeights: clamp(roleWeights),
+    })
+    .where(eq(tierTable.id, tierId));
+
+  // Plan-tab is sticky-cached; flush so the new weights take
+  // effect immediately on the next render rather than waiting
+  // for the operator to click Refresh.
+  await db
+    .delete(tierPlanCacheTable)
+    .where(eq(tierPlanCacheTable.tierId, tierId));
 
   revalidatePath("/", "layout");
   return { ok: true };

@@ -7,6 +7,91 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-04-26
+
+### Added
+
+- **Configurable distribution weights per tier.** The Tier
+  edit form now has a "Distribution weights" section with two
+  groups of fine-tuneable multipliers:
+  - **Slot weights** (`slot_weights` JSON column on `tier`):
+    one numeric value per slot. The default is 1.0 for every
+    slot except Weapon (0.8 — biggest single power upgrade),
+    Chestpiece / Pants (0.85 — high sub-stat budget) and
+    Head (0.95 — slightly above other accessories). Lower
+    value = lower edge cost in the min-cost-flow planner =
+    higher priority for that slot. The defaults match the
+    common static-raid intuition that chest/pants and weapon
+    "feel" more impactful than ring or boots upgrades.
+  - **Role weights** (`role_weights` JSON column on `tier`):
+    one value per gear role. The default biases drops slightly
+    toward DPS roles (melee / phys-range / caster = 0.95)
+    against tank / healer (1.0) — tanks and healers historically
+    have more Savage slots in their BiS by definition (bigger
+    weapons, plus more accessories that overlap), so a small
+    role tilt restores fairness across roles.
+
+  Both weight sets are clamped to `[0.1, 2.0]` server-side and
+  persist per tier; setting them all to 1.0 disables the
+  bias entirely. Saving the form invalidates the plan cache
+  so the next plan render reflects the change immediately.
+
+- **History — edit recipient on a past drop.** Each row in the
+  per-week History timeline now exposes a pencil-icon button
+  that opens an "Change recipient" dialog. Picking a different
+  player runs an atomic edit:
+  1. The original auto-equip is rolled back (the previous
+     `bis_choice.current_source` for the OLD recipient on
+     `target_slot` is restored from `previous_current_source`).
+  2. `resolveAutoEquip` runs for the new recipient on the same
+     tier + item to find their first BiS-eligible slot.
+  3. The new recipient's `bis_choice.current_source` is set
+     and the `loot_drop` row's `recipient_id`, `target_slot`,
+     `previous_current_source`, and `picked_by_algorithm=false`
+     fields are updated in place — preserving the original
+     `awarded_at` timestamp and history continuity.
+
+  Useful when a drop was awarded to the wrong player (mis-click
+  in raid, bad call, …) and a full undo + re-award would lose
+  the original timestamp.
+
+- **Plan tab — direct buy-assign.** The "Recommended page-buys"
+  table on the Plan tab now has an "Action" column with an
+  inline "Assign" button per recommended buy. Clicking it
+  records the buy as a `paid_with_pages=true` `loot_drop` for
+  the *current* week (no need to navigate to the Track tab and
+  manually enter the floor / item / recipient). The button is
+  disabled when no current raid week exists.
+
+### Changed
+
+- **MCMF edge costs now respect slot + role weights.** Drop
+  edges in the floor-planner are priced as
+  `slotWeight × roleWeight × baseCost`; buy edges use the same
+  multiplier on the buy edge. Previously the planner treated
+  every (slot, role) pair as identical (uniform edge cost), so
+  the only signal driving the schedule was `weekOffset²`.
+  With v3.3 the planner produces the same total assignment
+  count as before but the *order* of fills + the player tied
+  to a contested drop is steered by the configured weights.
+
+- **`DEFAULT_ROLE_WEIGHTS` replaces the v2 `ROLE_WEIGHTS` constant.**
+  The old `ROLE_WEIGHTS` export still exists as a deprecated
+  alias for backwards compatibility, but new code should import
+  `DEFAULT_ROLE_WEIGHTS` from `@/lib/ffxiv/jobs`. The shape
+  changed: old defaults gave melee 1.10 and phys-range 1.05 to
+  *increase* their cost (= deprioritise them); the new defaults
+  give every DPS role 0.95 to *decrease* their cost (= mildly
+  prefer them on ties), matching the intent the operator
+  actually wants in modern statics.
+
+### Migrations
+
+- `0012_tier_slot_weights.sql` — adds `tier.slot_weights` JSON column.
+- `0013_tier_role_weights.sql` — adds `tier.role_weights` JSON column.
+- `0014_flush_plan_cache_v3_3.sql` — invalidates every cached plan so
+  the new weight-aware planner runs on next render.
+
 ## [3.2.3] - 2026-04-26
 
 ### Fixed

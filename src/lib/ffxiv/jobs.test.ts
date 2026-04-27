@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { GEAR_ROLES, JOB_CODES, jobToGearRole, ROLE_WEIGHTS } from "./jobs";
+import {
+  DEFAULT_ROLE_WEIGHTS,
+  GEAR_ROLES,
+  JOB_CODES,
+  jobToGearRole,
+} from "./jobs";
 
 describe("jobToGearRole", () => {
   it("classifies the four tank jobs as `tank`", () => {
@@ -57,20 +62,22 @@ describe("JOB_CODES", () => {
   });
 });
 
-describe("ROLE_WEIGHTS", () => {
-  it("matches the Topic 1 decision (2026-04-25)", () => {
-    expect(ROLE_WEIGHTS).toEqual({
+describe("DEFAULT_ROLE_WEIGHTS", () => {
+  it("matches the v3.3 design (DPS slight preference)", () => {
+    expect(DEFAULT_ROLE_WEIGHTS).toEqual({
       tank: 1.0,
       healer: 1.0,
-      caster: 1.0,
-      phys_range: 1.05,
-      melee: 1.1,
+      melee: 0.95,
+      phys_range: 0.95,
+      caster: 0.95,
     });
   });
 
-  it("never gives any role less than the neutral 1.00 weight", () => {
+  it("keeps every weight inside the configurable range [0.1, 2.0]", () => {
     for (const role of GEAR_ROLES) {
-      expect(ROLE_WEIGHTS[role]).toBeGreaterThanOrEqual(1);
+      const w = DEFAULT_ROLE_WEIGHTS[role];
+      expect(w).toBeGreaterThanOrEqual(0.1);
+      expect(w).toBeLessThanOrEqual(2.0);
     }
   });
 });

@@ -85,6 +85,27 @@
       "when": 1777820000000,
       "tag": "0011_flush_plan_cache_v3_2",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1777900000000,
+      "tag": "0012_tier_slot_weights",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1777910000000,
+      "tag": "0013_tier_role_weights",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1777920000000,
+      "tag": "0014_flush_plan_cache_v3_3",
+      "breakpoints": true
     }
   ]
 }

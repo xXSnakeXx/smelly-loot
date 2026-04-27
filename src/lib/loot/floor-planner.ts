@@ -1,12 +1,13 @@
+import { DEFAULT_ROLE_WEIGHTS, type GearRole } from "@/lib/ffxiv/jobs";
 import {
   type BisSource,
+  DEFAULT_SLOT_WEIGHTS,
   type ItemKey,
   SLOTS,
   type Slot,
 } from "@/lib/ffxiv/slots";
 
 import {
-  isMaterial,
   type PlayerSnapshot,
   slotsForItem as slotsCoveredByItem,
   sourceForItem,
@@ -137,6 +138,22 @@ export interface FloorPlanOptions {
    * plan lines up with what Track sees for the same data.
    */
   alreadyKilledFloors: ReadonlySet<number>;
+  /**
+   * Optional per-slot priority multipliers. Lower value = cheaper
+   * edge cost = the optimiser prefers filling that slot first.
+   * Falls back to `DEFAULT_SLOT_WEIGHTS` from `slots.ts` when
+   * unset — see that constant for sensible defaults (chest /
+   * pants discounted to bias high-stat-budget upgrades first).
+   */
+  slotWeights?: Partial<Record<Slot, number>>;
+  /**
+   * Optional per-role priority multipliers. Lower value = cheaper
+   * edge cost to that role's NeedNodes. Falls back to
+   * `DEFAULT_ROLE_WEIGHTS` from `jobs.ts`. Setting `melee = 0.9`
+   * (vs default 0.95) bias drops more strongly toward melee DPS;
+   * setting them all to 1.0 disables the role bias entirely.
+   */
+  roleWeights?: Partial<Record<GearRole, number>>;
 }
 
 /** Pages earned per boss kill in FF XIV — currently always 1. */
@@ -175,6 +192,20 @@ export function computeFloorPlan(
     { length: weeksAhead },
     (_, i) => startingWeekNumber + i,
   );
+
+  // Resolve the priority weights, falling back to the
+  // hard-coded defaults when the tier-settings UI hasn't been
+  // touched. Stored in `effectiveSlotWeights` and
+  // `effectiveRoleWeights` so the cost-edge code can multiply
+  // through without an extra null-check on every iteration.
+  const effectiveSlotWeights: Record<Slot, number> = {
+    ...DEFAULT_SLOT_WEIGHTS,
+    ...(options.slotWeights ?? {}),
+  };
+  const effectiveRoleWeights: Record<GearRole, number> = {
+    ...DEFAULT_ROLE_WEIGHTS,
+    ...(options.roleWeights ?? {}),
+  };
 
   if (!floor.trackedForAlgorithm) {
     // Untracked floors (e.g. F4 weapon coffers) show their drops
@@ -282,16 +313,27 @@ export function computeFloorPlan(
     for (const [itemKey, meta] of itemMeta) {
       const dropNode = mcmf.addNode();
       mcmf.addEdge(source, dropNode, meta.cost, 0);
-      // Cost-per-unit-flow = weekOffset² / item.cost so that
-      // total contribution per fulfilled need = item.cost × cost
-      // = weekOffset². This equalises the objective across cost
-      // classes (3 vs 4 vs 6) so a Glaze fulfilment "weighs" the
-      // same as a gear fulfilment in the same week.
-      const edgeCost = weekCostNumerator / meta.cost;
+      // Cost-per-unit-flow = weekOffset² × slotWeight ×
+      // roleWeight / item.cost so that total contribution per
+      // fulfilled need = item.cost × cost = weekOffset² ×
+      // slotWeight × roleWeight. The week² term keeps min-max-
+      // time-to-BiS as the primary objective; slotWeight bias
+      // the optimiser toward high-priority slots (Chestpiece /
+      // Pants over Boots when both are TomeUp-needed); role
+      // weight gives DPS a 5% discount so they get first pick
+      // in tie-breaks. The cap "DPS prioritisieren bis nur
+      // noch 2 Items übrig" falls out automatically because
+      // page-buy edges carry their own (cheaper-than-late-
+      // drop) cost — once a DPS' remaining needs are coverable
+      // by buys, drops naturally route elsewhere.
+      const baseEdgeCost = weekCostNumerator / meta.cost;
       for (const player of players) {
+        const roleWeight = effectiveRoleWeights[player.gearRole] ?? 1;
         for (const slot of meta.slots) {
           const need = needs.get(needKey(player.id, slot));
           if (!need || need.itemKey !== itemKey) continue;
+          const slotWeight = effectiveSlotWeights[slot] ?? 1;
+          const edgeCost = baseEdgeCost * slotWeight * roleWeight;
           const edgeId = mcmf.addEdge(
             dropNode,
             need.nodeId,
@@ -414,14 +456,21 @@ export function computeFloorPlan(
         // or exactly costClass at this slot, never partial.
         mcmf.addEdge(pageBudgetNode, slotNode, costClass, 0);
 
-        const buyEdgeCost =
-          ((completionWeekOffset + 1) * (completionWeekOffset + 1)) /
-            costClass +
-          PAGE_PREFERENCE_EPS;
+        const baseBuyCost =
+          ((completionWeekOffset + 1) * (completionWeekOffset + 1)) / costClass;
+        const playerRoleWeight = effectiveRoleWeights[player.gearRole] ?? 1;
         for (const [itemKey, meta] of relevantItems) {
           for (const slot of meta.slots) {
             const need = needs.get(needKey(player.id, slot));
             if (!need || need.itemKey !== itemKey) continue;
+            // Same slot+role weighting as drops, plus the
+            // PAGE_PREFERENCE_EPS so a tied (drop, buy) pair
+            // always picks the drop. Multiplying ε with
+            // costClass keeps the bias proportional to the
+            // unit-of-flow scale.
+            const slotWeight = effectiveSlotWeights[slot] ?? 1;
+            const buyEdgeCost =
+              baseBuyCost * slotWeight * playerRoleWeight + PAGE_PREFERENCE_EPS;
             const edgeId = mcmf.addEdge(
               slotNode,
               need.nodeId,

@@ -57,8 +57,14 @@ export const resetRaidWeekSchema = z.object({
   raidWeekId: z.coerce.number().int().positive(),
 });
 
+export const editLootDropSchema = z.object({
+  lootDropId: z.coerce.number().int().positive(),
+  recipientId: z.coerce.number().int().positive(),
+});
+
 export type CreateRaidWeekInput = z.infer<typeof createRaidWeekSchema>;
 export type RecordBossKillInput = z.infer<typeof recordBossKillSchema>;
 export type AwardLootDropInput = z.infer<typeof awardLootDropSchema>;
 export type UndoLootDropInput = z.infer<typeof undoLootDropSchema>;
 export type ResetRaidWeekInput = z.infer<typeof resetRaidWeekSchema>;
+export type EditLootDropInput = z.infer<typeof editLootDropSchema>;

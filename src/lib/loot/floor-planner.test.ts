@@ -507,4 +507,103 @@ describe("computeFloorPlan", () => {
     // At least one Twine drop assigned (cheaper than buying).
     expect(plan.drops.some((d) => d.itemKey === "Twine")).toBe(true);
   });
+
+  it("v3.3 slot weights bias which slot is filled first when one player needs multiple", () => {
+    // Two-week horizon, single player wants Head + Boots; F2
+    // drops Head, Gloves, Boots once per week. The optimiser
+    // can fill both needs by week 2, but the *order* of fills
+    // is steered by slot weights — the cheaper-weight slot
+    // should land in the earlier week.
+    const tier = makeTier();
+    const player = makePlayer({
+      id: 1,
+      name: "Solo",
+      gearRole: "tank",
+      bisDesired: { Head: "Savage", Boots: "Savage" },
+      bisCurrent: { Head: "Crafted", Boots: "Crafted" },
+    });
+    const planFavorHead = computeFloorPlan(
+      {
+        floorNumber: 2,
+        itemKeys: ["Head", "Gloves", "Boots"],
+        trackedForAlgorithm: true,
+      },
+      [player],
+      tier,
+      {
+        startingWeekNumber: 1,
+        weeksAhead: 2,
+        alreadyKilledFloors: new Set(),
+        slotWeights: { Head: 0.1, Boots: 2.0 },
+      },
+    );
+    const headDrop = planFavorHead.drops.find((d) => d.itemKey === "Head");
+    const bootsDrop = planFavorHead.drops.find((d) => d.itemKey === "Boots");
+    expect(headDrop).toBeDefined();
+    expect(bootsDrop).toBeDefined();
+    // Cheap-weight slot lands in week 1; expensive in week 2.
+    expect(headDrop?.week).toBeLessThanOrEqual(bootsDrop?.week ?? Infinity);
+
+    // Flip the weights and the order should flip.
+    const planFavorBoots = computeFloorPlan(
+      {
+        floorNumber: 2,
+        itemKeys: ["Head", "Gloves", "Boots"],
+        trackedForAlgorithm: true,
+      },
+      [player],
+      tier,
+      {
+        startingWeekNumber: 1,
+        weeksAhead: 2,
+        alreadyKilledFloors: new Set(),
+        slotWeights: { Head: 2.0, Boots: 0.1 },
+      },
+    );
+    const headDrop2 = planFavorBoots.drops.find((d) => d.itemKey === "Head");
+    const bootsDrop2 = planFavorBoots.drops.find((d) => d.itemKey === "Boots");
+    expect(bootsDrop2?.week).toBeLessThanOrEqual(headDrop2?.week ?? Infinity);
+  });
+
+  it("v3.3 role weights bias drops toward the lighter-weight role on a tie", () => {
+    // Two players, both want one Earring, weeksAhead=1 → only
+    // a single Earring drops (one of them gets it, the other
+    // is left with the buy). With role weights tank=0.1 vs
+    // healer=2.0, the drop should land on the tank.
+    const tier = makeTier();
+    const players = [
+      makePlayer({
+        id: 1,
+        name: "Tank",
+        gearRole: "tank",
+        bisDesired: { Earring: "Savage" },
+        bisCurrent: { Earring: "Crafted" },
+      }),
+      makePlayer({
+        id: 2,
+        name: "Healer",
+        gearRole: "healer",
+        bisDesired: { Earring: "Savage" },
+        bisCurrent: { Earring: "Crafted" },
+      }),
+    ];
+    const plan = computeFloorPlan(FLOOR_1, players, tier, {
+      startingWeekNumber: 1,
+      weeksAhead: 1,
+      alreadyKilledFloors: new Set(),
+      roleWeights: { tank: 0.1, healer: 2.0 },
+    });
+    const earringDrop = plan.drops.find((d) => d.itemKey === "Earring");
+    expect(earringDrop?.recipientName).toBe("Tank");
+
+    // Flip the weights and the drop should go to the healer.
+    const planFlipped = computeFloorPlan(FLOOR_1, players, tier, {
+      startingWeekNumber: 1,
+      weeksAhead: 1,
+      alreadyKilledFloors: new Set(),
+      roleWeights: { tank: 2.0, healer: 0.1 },
+    });
+    const earringDrop2 = planFlipped.drops.find((d) => d.itemKey === "Earring");
+    expect(earringDrop2?.recipientName).toBe("Healer");
+  });
 });

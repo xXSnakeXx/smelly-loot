@@ -271,7 +271,13 @@
     "resetWeekConfirmDescription": "All {drops} drops from this week will be removed and the equipped items rolled back. Boss kills (pages) for this week are also cleared. This cannot be undone.",
     "confirmReset": "Yes, reset",
     "cancel": "Cancel",
-    "revertDrop": "Revert this drop"
+    "revertDrop": "Revert this drop",
+    "editRecipient": "Change recipient",
+    "editRecipientTitle": "Change recipient for {item}",
+    "editRecipientDescription": "The original auto-equip is rolled back and re-applied for the new recipient.",
+    "selectPlayer": "Select player…",
+    "save": "Save",
+    "saving": "Saving…"
   },
   "tierEdit": {
     "title": "Tier configuration",
@@ -288,7 +294,28 @@
     "ilvLabel": "{source}",
     "save": "Save",
     "savedToast": "Tier configuration saved.",
-    "saveErrorToast": "Save failed."
+    "saveErrorToast": "Save failed.",
+    "weights": {
+      "heading": "Distribution weights",
+      "description": "Fine-tune loot distribution. Values between 0.1 and 2.0. Lower values = higher priority (shorter time-to-BiS).",
+      "save": "Save weights",
+      "resetDefaults": "Reset defaults",
+      "savedToast": "Weights saved.",
+      "saveErrorToast": "Saving weights failed.",
+      "slots": {
+        "heading": "Slot weights",
+        "description": "Lower values prioritise the slot (e.g. Chest/Pants have more sub-stats and tend to be awarded earlier)."
+      },
+      "roles": {
+        "heading": "Role weights",
+        "description": "Lower values prioritise the role on conflicts (e.g. DPS slight preference).",
+        "tank": "Tank",
+        "healer": "Healer",
+        "melee": "Melee DPS",
+        "ranged": "Ranged DPS",
+        "caster": "Caster DPS"
+      }
+    }
   },
   "bis": {
     "title": "Best in Slot",
@@ -366,7 +393,10 @@
         "itemColumn": "Item",
         "slotColumn": "For slot",
         "weekColumn": "From week",
-        "pagesColumn": "Pages"
+        "pagesColumn": "Pages",
+        "actionColumn": "Action",
+        "assign": "Assign",
+        "assignTooltip": "Record this buy as a paid-with-pages drop for the current week."
       }
     },
     "noWeeks": {
@@ -410,6 +440,7 @@
       "killUndone": "Boss kill undone.",
       "dropAwarded": "Drop assigned to {name}.",
       "dropUndone": "Drop assignment undone.",
+      "buyAssigned": "Pages buy assigned to {name}.",
       "notBisError": "{name} doesn't need this item for BiS — award rejected.",
       "error": "Something went wrong — please retry."
     }

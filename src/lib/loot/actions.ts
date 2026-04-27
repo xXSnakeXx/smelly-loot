@@ -12,13 +12,14 @@ import {
   lootDrop,
   raidWeek as raidWeekTable,
 } from "@/lib/db/schema";
-import { type BisSource, type ItemKey, type Slot } from "@/lib/ffxiv/slots";
-import { sourceForItem, slotsForItem } from "./algorithm";
+import type { BisSource, ItemKey, Slot } from "@/lib/ffxiv/slots";
+import { slotsForItem, sourceForItem } from "./algorithm";
 
 import { invalidatePlanCache, refreshPlan } from "./plan-cache";
 import {
   awardLootDropSchema,
   createRaidWeekSchema,
+  editLootDropSchema,
   recordBossKillSchema,
   resetRaidWeekSchema,
   undoBossKillSchema,
@@ -400,6 +401,112 @@ export async function undoLootDropAction(
   }
 
   await db.delete(lootDrop).where(eq(lootDrop.id, lootDropId));
+
+  await invalidatePlanCache(drop.tierId);
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/**
+ * Edit a previously-awarded drop by switching its recipient.
+ *
+ * Equivalent to "undo + re-award with a new recipient" but
+ * preserves the loot_drop row (history continuity, audit trail
+ * via the original `awarded_at` timestamp). Steps:
+ *
+ *   1. Roll back the OLD recipient's bisCurrent on `target_slot`
+ *      to `previous_current_source` (if both columns are set).
+ *   2. Run `resolveAutoEquip` for the NEW recipient on the same
+ *      tier + item to find their first BiS-eligible slot.
+ *   3. Apply the new equip + update loot_drop.recipient_id /
+ *      target_slot / previous_current_source in place.
+ *
+ * If the new recipient has no BiS-eligible slot for the item,
+ * the row's recipient is updated but target_slot stays NULL —
+ * matching the manual-override semantics from `awardLootDropAction`.
+ */
+export async function editLootDropAction(
+  formData: FormData,
+): Promise<LootActionResult> {
+  const parsed = editLootDropSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return {
+      ok: false,
+      reason: "validation",
+      errors: fieldErrors(parsed.error),
+    };
+  }
+  const { lootDropId, recipientId: newRecipientId } = parsed.data;
+
+  const dropRows = await db
+    .select({
+      id: lootDrop.id,
+      itemKey: lootDrop.itemKey,
+      raidWeekId: lootDrop.raidWeekId,
+      recipientId: lootDrop.recipientId,
+      targetSlot: lootDrop.targetSlot,
+      previousCurrentSource: lootDrop.previousCurrentSource,
+      tierId: raidWeekTable.tierId,
+    })
+    .from(lootDrop)
+    .innerJoin(raidWeekTable, eq(lootDrop.raidWeekId, raidWeekTable.id))
+    .where(eq(lootDrop.id, lootDropId))
+    .limit(1);
+  const drop = dropRows[0];
+  if (!drop) {
+    return { ok: false, reason: "conflict", message: "loot_drop not found" };
+  }
+
+  // 1. Roll back the OLD equip (if any).
+  if (
+    drop.recipientId !== null &&
+    drop.targetSlot !== null &&
+    drop.previousCurrentSource !== null
+  ) {
+    await db
+      .update(bisChoice)
+      .set({ currentSource: drop.previousCurrentSource })
+      .where(
+        and(
+          eq(bisChoice.playerId, drop.recipientId),
+          eq(bisChoice.tierId, drop.tierId),
+          eq(bisChoice.slot, drop.targetSlot),
+        ),
+      );
+  }
+
+  // 2. Resolve new equip for the new recipient.
+  const newEquip = await resolveAutoEquip(
+    newRecipientId,
+    drop.tierId,
+    drop.itemKey as ItemKey,
+  );
+
+  // 3. Apply the new equip + update the loot_drop row.
+  if (newEquip) {
+    await db
+      .update(bisChoice)
+      .set({ currentSource: newEquip.newSource })
+      .where(
+        and(
+          eq(bisChoice.playerId, newRecipientId),
+          eq(bisChoice.tierId, drop.tierId),
+          eq(bisChoice.slot, newEquip.targetSlot),
+        ),
+      );
+  }
+
+  await db
+    .update(lootDrop)
+    .set({
+      recipientId: newRecipientId,
+      // pickedByAlgorithm: false because this is by definition
+      // a manual operator override after the fact.
+      pickedByAlgorithm: false,
+      targetSlot: newEquip?.targetSlot ?? null,
+      previousCurrentSource: newEquip?.previousCurrentSource ?? null,
+    })
+    .where(eq(lootDrop.id, lootDropId));
 
   await invalidatePlanCache(drop.tierId);
   revalidatePath("/", "layout");

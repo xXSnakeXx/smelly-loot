@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, RotateCcw, Undo2 } from "lucide-react";
+import { ChevronDown, Pencil, RotateCcw, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
 
@@ -23,7 +23,27 @@ import {
   CollapsiblePanel,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { resetRaidWeekAction, undoLootDropAction } from "@/lib/loot/actions";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  editLootDropAction,
+  resetRaidWeekAction,
+  undoLootDropAction,
+} from "@/lib/loot/actions";
 import { cn } from "@/lib/utils";
 
 /**
@@ -51,6 +71,11 @@ interface FloorMeta {
   itemKeys: string[];
 }
 
+interface RosterEntry {
+  id: number;
+  name: string;
+}
+
 interface HistoryWeekCardProps {
   weekId: number;
   weekNumber: number;
@@ -58,6 +83,7 @@ interface HistoryWeekCardProps {
   startedAtLabel: string;
   drops: HistoryDropRow[];
   floors: FloorMeta[];
+  roster: RosterEntry[];
   defaultOpen: boolean;
   locale: "de" | "en";
 }
@@ -81,6 +107,7 @@ export function HistoryWeekCard({
   startedAtLabel,
   drops,
   floors,
+  roster,
   defaultOpen,
 }: HistoryWeekCardProps) {
   const t = useTranslations("history");
@@ -196,6 +223,7 @@ export function HistoryWeekCard({
                       key={floor.id}
                       floor={floor}
                       drops={floorDrops}
+                      roster={roster}
                     />
                   );
                 })}
@@ -211,9 +239,11 @@ export function HistoryWeekCard({
 function FloorSection({
   floor,
   drops,
+  roster,
 }: {
   floor: FloorMeta;
   drops: HistoryDropRow[];
+  roster: RosterEntry[];
 }) {
   const t = useTranslations("history");
   return (
@@ -225,16 +255,27 @@ function FloorSection({
       </div>
       <ul className="grid gap-1.5 sm:grid-cols-2">
         {drops.map((drop) => (
-          <DropRow key={drop.id} drop={drop} />
+          <DropRow key={drop.id} drop={drop} roster={roster} />
         ))}
       </ul>
     </div>
   );
 }
 
-function DropRow({ drop }: { drop: HistoryDropRow }) {
+function DropRow({
+  drop,
+  roster,
+}: {
+  drop: HistoryDropRow;
+  roster: RosterEntry[];
+}) {
   const t = useTranslations("history");
   const [isPending, startTransition] = useTransition();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRecipientId, setEditRecipientId] = useState<string>(
+    drop.recipientId ? String(drop.recipientId) : "",
+  );
+  const [editPending, startEditTransition] = useTransition();
 
   // Source = TomeUp if the item is a material, else Savage. We
   // could read the actual `source` from the schema in the future
@@ -253,11 +294,22 @@ function DropRow({ drop }: { drop: HistoryDropRow }) {
     });
   };
 
+  const handleEditSubmit = () => {
+    if (!editRecipientId) return;
+    startEditTransition(async () => {
+      const fd = new FormData();
+      fd.set("lootDropId", String(drop.id));
+      fd.set("recipientId", editRecipientId);
+      const result = await editLootDropAction(fd);
+      if (result.ok) setEditOpen(false);
+    });
+  };
+
   return (
     <li
       className={cn(
         "flex items-center justify-between gap-2 rounded-md border bg-card/50 px-3 py-2 text-sm transition-opacity",
-        isPending && "opacity-50",
+        (isPending || editPending) && "opacity-50",
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -294,17 +346,83 @@ function DropRow({ drop }: { drop: HistoryDropRow }) {
           </Badge>
         ) : null}
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="shrink-0"
-        onClick={handleRevert}
-        disabled={isPending}
-        title={t("revertDrop")}
-      >
-        <Undo2 className="size-3.5" />
-      </Button>
+      <div className="flex shrink-0 items-center gap-1">
+        {drop.recipientId !== null ? (
+          <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <DialogTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  title={t("editRecipient")}
+                  disabled={isPending || editPending}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+              }
+            />
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>
+                  {t("editRecipientTitle", { item: drop.itemKey })}
+                </DialogTitle>
+                <DialogDescription>
+                  {t("editRecipientDescription")}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-2">
+                <Select
+                  value={editRecipientId}
+                  onValueChange={(v) => setEditRecipientId(v ?? "")}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("selectPlayer")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roster.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setEditOpen(false)}
+                  disabled={editPending}
+                >
+                  {t("cancel")}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleEditSubmit}
+                  disabled={
+                    editPending ||
+                    !editRecipientId ||
+                    Number(editRecipientId) === drop.recipientId
+                  }
+                >
+                  {editPending ? t("saving") : t("save")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={handleRevert}
+          disabled={isPending || editPending}
+          title={t("revertDrop")}
+        >
+          <Undo2 className="size-3.5" />
+        </Button>
+      </div>
     </li>
   );
 }

@@ -12,7 +12,7 @@ import {
   raidWeek as raidWeekTable,
 } from "@/lib/db/schema";
 
-import { HistoryWeekCard, type HistoryDropRow } from "./history-week-card";
+import { type HistoryDropRow, HistoryWeekCard } from "./history-week-card";
 
 /**
  * Tier-scoped loot history (server entry point).
@@ -122,6 +122,7 @@ export async function HistoryView({ tierId }: { tierId: number }) {
               number: f.number,
               itemKeys: (f.drops as string[]) ?? [],
             }))}
+            roster={players.map((p) => ({ id: p.id, name: p.name }))}
             defaultOpen={week.id === mostRecentWeekId}
             locale={locale}
           />
