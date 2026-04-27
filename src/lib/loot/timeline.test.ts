@@ -440,4 +440,61 @@ describe("plan ↔ track parity", () => {
     const earring = plan[0]?.weeks[0]?.drops[0];
     expect(earring?.recipientName).toBeNull();
   });
+
+  it("does not spill fully-self-served onto later items in the same lockout (v2.5.1)", () => {
+    // v2.5.1 — the Bracelet spillover bug: in a tier where a
+    // player wins one F1 item early in a week (Necklace), the
+    // sequential awarding loop used to recompute purchasedSlots
+    // against the freshly-mutated bisCurrent. The remaining
+    // unmet count fell to 1, matching buyPower=1, so the player
+    // was falsely flagged "fully self-served" for the next item
+    // (Bracelet) in the same lockout — the drop ended up
+    // assigned to nobody, even though the player still wanted
+    // and didn't have it.
+    //
+    // Two-player scenario reproduces the original Kaz vs Fara
+    // situation: Kaz wants Necklace+Bracelet, Fara wants only
+    // Bracelet, both have 3 F1 pages. After the +1 from this
+    // week's kill that's 4 pages → buyPower=1 each. Necklace
+    // legitimately goes to Kaz (only wanter). Bracelet should
+    // ALSO go to Kaz (or Fara, but anyway: assigned, not "—").
+    const tier = makeTier();
+    const players: PlayerSnapshot[] = [
+      makePlayer({
+        id: 1,
+        name: "Kaz",
+        gearRole: "healer",
+        bisDesired: { Necklace: "Savage", Bracelet: "Savage" },
+        bisCurrent: { Necklace: "Crafted", Bracelet: "Crafted" },
+        pages: { 1: 3 },
+      }),
+      makePlayer({
+        id: 2,
+        name: "Fara",
+        gearRole: "tank",
+        bisDesired: { Bracelet: "Savage" },
+        bisCurrent: { Bracelet: "Crafted" },
+        pages: { 1: 3 },
+      }),
+    ];
+    const plan = simulateLootTimeline(players, tier, {
+      startingWeekNumber: 1,
+      weeksAhead: 1,
+      floors: [
+        {
+          floorNumber: 1,
+          itemKeys: ["Earring", "Necklace", "Bracelet", "Ring"],
+          trackedForAlgorithm: true,
+        },
+      ],
+    });
+    const week1 = plan[0]?.weeks[0]?.drops ?? [];
+    const necklaceDrop = week1.find((d) => d.itemKey === "Necklace");
+    const braceletDrop = week1.find((d) => d.itemKey === "Bracelet");
+    expect(necklaceDrop?.recipientName).toBe("Kaz");
+    // The point of the regression test: Bracelet must land on a
+    // recipient, even though Kaz' remaining unmet count fell to
+    // 1 == buyPower after she won Necklace earlier in the loop.
+    expect(braceletDrop?.recipientName).not.toBeNull();
+  });
 });

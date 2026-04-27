@@ -201,12 +201,12 @@ function scoreGear(
   const slotsForItem = SLOTS_BY_ITEM_KEY[context.itemKey as GearItemKey];
   const cost = context.tier.buyCostByItem.get(context.itemKey);
 
-  // Page-aware purchase simulation (v2.2.1): we assume that every
-  // week each player has used their accumulated pages to buy the
-  // cheapest-acquirable slots they still need, and only the
-  // un-purchased slots compete for actual drops.
+  // Page-aware purchase simulation (v2.2.1, refined in v2.5.1):
+  // we assume that every week each player has used their accumulated
+  // pages to buy the cheapest-acquirable slots they still need, and
+  // only the un-purchased slots compete for actual drops.
   //
-  // This solves two earlier issues simultaneously:
+  // This solves three issues simultaneously:
   //
   //   1. Pre-v2.2 the algorithm subtracted `buyPower` from each
   //      item's `effectiveNeed` independently, so 3 Floor-1 pages
@@ -217,11 +217,26 @@ function scoreGear(
   //      (9 Floor-1 pages, 1 needed item) still got the drop
   //      recommended even though they could trivially have bought
   //      the slot themselves.
+  //   3. v2.3-v2.5 made the fully-self-served zero-out trigger as
+  //      soon as the player's *remaining* unmet count fell to
+  //      buyPower — but in the timeline simulator's per-week,
+  //      per-floor sequential awarding, awarding Necklace to Kaz
+  //      mutated her bisCurrent. The next item's recompute then
+  //      saw fewer unmet slots and falsely flagged her "fully
+  //      self-served" for Bracelet, even though Bracelet still
+  //      wasn't covered. v2.5.1 keeps the live recompute (it's
+  //      what makes the algorithm adapt to in-week drops) but
+  //      gates the zero-out on "no drop won this floor this
+  //      week": once a player has won a drop in the same lockout
+  //      they re-enter the competition with the standard 0.5
+  //      purchase-discount. They still don't *outscore* a
+  //      page-poor competitor, but they're no longer ineligible
+  //      for the next item in the same floor.
   //
   // The new rule pre-computes a per-(player, floor) set of
   // "purchased" slots: pages divided by the floor's per-item cost
   // gives the number of slots covered by self-purchase, picked in
-  // a deterministic floor-item order. The score for any specific
+  // a deterministic team-demand order. The score for any specific
   // item then only counts slots that are NOT in that set.
   const { purchased: purchasedSlots, totalUnmet: floorTotalUnmet } =
     computePurchasedSlots(
@@ -231,15 +246,25 @@ function scoreGear(
       context.floorNumber,
       dropSource,
     );
+  // "Won a drop this floor this week": detected via
+  // `lastDropWeekByFloor[floor] === currentWeek`. The simulator's
+  // `applyAward` updates this map as soon as the first item of the
+  // floor is awarded in this week, so subsequent items in the
+  // same lockout see this flag set and bypass the zero-out.
+  const lastDropOnThisFloor = player.lastDropWeekByFloor.get(
+    context.floorNumber,
+  );
+  const wonThisFloorThisWeek = lastDropOnThisFloor === context.currentWeek;
   // "Fully self-served": the player wanted at least one slot on
-  // this floor, and every single one is covered by simulated
-  // self-purchase. They drop out of the competition for any drop
-  // on this floor — giving them the drop would just leak a
-  // recommendation away from a teammate who genuinely still needs
-  // it. Drops only land on this player if no-one else needs it
-  // either (in which case the deterministic tiebreaker fills in).
+  // this floor, every single one is covered by simulated self-
+  // purchase, AND they haven't already won a drop on this floor
+  // in the current lockout. Without the last clause, sequential
+  // awards within one floor pass would falsely zero out a player
+  // who legitimately still needs the next item in the lockout.
   const fullySelfServed =
-    floorTotalUnmet > 0 && purchasedSlots.size === floorTotalUnmet;
+    !wonThisFloorThisWeek &&
+    floorTotalUnmet > 0 &&
+    purchasedSlots.size === floorTotalUnmet;
   const buyPower = cost
     ? Math.floor((player.pages.get(cost.floor) ?? 0) / cost.cost)
     : 0;
@@ -294,7 +319,18 @@ function scoreGear(
     lastWeek === undefined || lastWeek === null
       ? Infinity
       : context.currentWeek - lastWeek;
-  const recencyPenalty = Math.max(0, 4 - weeksSince) * 5;
+  // Recency models multi-week patience: a player who got a drop on
+  // this floor LAST week is mildly disincentivized so a page-poor
+  // teammate gets a turn. Sequential awards within the SAME
+  // lockout (weeksSince === 0) are NOT what this term is for —
+  // the timeline simulator awards floor items one at a time and
+  // applyAward updates lastDropWeekByFloor as soon as the first
+  // item is given. A player who legitimately wins both Necklace
+  // and Bracelet in the same lockout (the only one still needing
+  // both) shouldn't be penalised for the second item. Fairness
+  // (1/(1+drops)) already de-prioritises repeat winners over the
+  // course of the tier.
+  const recencyPenalty = weeksSince <= 0 ? 0 : Math.max(0, 4 - weeksSince) * 5;
 
   const roleWeight = ROLE_WEIGHTS[player.gearRole];
   const basePriority = effectiveNeed * 100;
@@ -358,7 +394,12 @@ function scoreMaterial(
     lastWeek === undefined || lastWeek === null
       ? Infinity
       : context.currentWeek - lastWeek;
-  const recencyPenalty = Math.max(0, 4 - weeksSince) * 5;
+  // Recency models multi-week patience. Sequential awards within
+  // the same lockout (weeksSince === 0) shouldn't trigger it —
+  // see the long comment in scoreGear for the Bracelet-after-
+  // Necklace case. Fairness (1/(1+drops)) already de-prioritises
+  // repeat winners.
+  const recencyPenalty = weeksSince <= 0 ? 0 : Math.max(0, 4 - weeksSince) * 5;
 
   const basePriority = effectiveNeed * 100;
   const total =

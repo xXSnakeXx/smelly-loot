@@ -7,6 +7,50 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-04-26
+
+### Fixed
+
+- **Plan tab: drops no longer "spill" into "—" within the same
+  lockout.** The forward-planning simulator awards a floor's
+  items sequentially; before this release, awarding the first
+  item to a player mutated their `bisCurrent` so the *next*
+  item's `computePurchasedSlots` saw a smaller unmet count. With
+  `purchasedSlots.size === remaining_unmet` the player was
+  falsely flagged "fully self-served" and got `score = 0` on
+  every subsequent F1 drop in that lockout — leaving the
+  recipient field as "—" even though they still wanted the item.
+
+  Concrete reproducer (TestTier2 W4): Kaz wants Necklace and
+  Bracelet, gets Necklace from the algorithm, then Bracelet
+  silently dropped to "—" because Kaz' "remaining" unmet had
+  collapsed to 1 == buyPower. Fix: the fully-self-served
+  zero-out now bypasses when the player has already won a drop
+  on this floor this week (`lastDropWeekByFloor[floor] ===
+  currentWeek`). Once they've already taken their share for the
+  lockout, they re-enter the competition with the standard 0.5
+  purchase-discount instead of being booted entirely.
+
+- **Recency penalty no longer punishes same-lockout sequential
+  drops.** A player who legitimately wins both Necklace and
+  Bracelet in the same week shouldn't be penalised for the
+  second item on the basis of "you got a drop 0 weeks ago" —
+  recency models multi-week patience, not in-week ordering.
+  Penalty is now `0` when `weeksSince === 0`. Fairness
+  (`1/(1+drops)`) already de-prioritises repeat winners over the
+  course of the tier.
+
+- Plan-tab caches from before this release are flushed
+  automatically by migration `0006_flush_plan_cache_v2_5_1.sql`
+  on container start — no manual `tier_plan_cache` purge
+  needed when upgrading.
+
+### Added
+
+- `timeline.test.ts` regression test "does not spill
+  fully-self-served onto later items in the same lockout
+  (v2.5.1)" pins the Bracelet-after-Necklace assignment.
+
 ## [2.5.0] - 2026-04-26
 
 ### Changed
