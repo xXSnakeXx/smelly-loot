@@ -294,7 +294,19 @@
     "ilvLabel": "{source}",
     "save": "Save",
     "savedToast": "Tier configuration saved.",
-    "saveErrorToast": "Save failed."
+    "saveErrorToast": "Save failed.",
+    "refreezeBuys": {
+      "heading": "Page-buy recommendations",
+      "description": "Page-buy recommendations are frozen on the first plan run and stay fixed for the entire tier. Click here when the recommendations no longer fit — e.g. after a roster change or significant BiS edits.",
+      "trigger": "Recompute buys",
+      "confirmTitle": "Recompute page-buys?",
+      "confirmDescription": "The current buy plan will be discarded and recomputed from the current roster, BiS profile, and page balances. Already-awarded buys remain in history.",
+      "cancel": "Cancel",
+      "confirm": "Yes, recompute",
+      "confirmInProgress": "Computing\u2026",
+      "savedToast": "Buys recomputed.",
+      "errorToast": "Recomputation failed."
+    }
   },
   "bis": {
     "title": "Best in Slot",

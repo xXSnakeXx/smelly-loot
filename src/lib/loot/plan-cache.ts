@@ -1,10 +1,19 @@
 import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { bossKill, floor as floorTable, tierPlanCache } from "@/lib/db/schema";
+import {
+  bossKill,
+  floor as floorTable,
+  tierPlanCache,
+  tier as tierTable,
+} from "@/lib/db/schema";
 import type { ItemKey } from "@/lib/ffxiv/slots";
 
-import { computeGreedyPlan, type FloorPlan } from "./greedy-planner";
+import {
+  computeGreedyPlan,
+  type FloorPlan,
+  type PlannedBuy,
+} from "./greedy-planner";
 import {
   findCurrentRaidWeek,
   loadPlayerSnapshots,
@@ -12,7 +21,7 @@ import {
 } from "./snapshots";
 
 /**
- * Plan-tab cache layer (v4.0.0).
+ * Plan-tab cache layer (v4.1.0).
  *
  * The Plan tab on the tier-detail page caches its planner output
  * here and only recomputes when the user clicks the Refresh
@@ -21,12 +30,15 @@ import {
  * edits or drop recordings don't reshuffle the next few weeks
  * of plans under the operator's feet.
  *
- * Since v4.0.0 the underlying algorithm is the bottleneck-aware
- * greedy planner in `greedy-planner.ts`. The cache content shape
- * (`FloorPlan[]` — drops + page-buys per floor) is unchanged
- * from v3.x so the UI components keep working as-is. Migration
- * 0015 flushes pre-v4 caches on container start so the new
- * algorithm always seeds the cache on first render.
+ * v4.1.0 introduces **frozen buys**: the page-buy schedule is
+ * computed once on the first plan run for a tier and persisted
+ * to `tier.frozen_buys`. Subsequent refreshes only recompute the
+ * drop schedule; the buy list stays stable. The operator can
+ * trigger a buy-recalculation explicitly via the "refreeze
+ * buys" action in Tier-Settings.
+ *
+ * The plan-cache content shape (`FloorPlan[]`) is unchanged
+ * from v3/v4.0 so the UI components keep working.
  */
 
 export interface CachedPlan {
@@ -38,6 +50,14 @@ export interface CachedPlan {
  * Recompute the Plan-tab simulation and write it back to the
  * cache. Returns the freshly computed plan for the caller's
  * convenience.
+ *
+ * Frozen-buy semantics:
+ *   - If `tier.frozen_buys` is NULL, run the planner end-to-end
+ *     and persist the resulting buy set.
+ *   - If `tier.frozen_buys` is set, run the planner anyway (we
+ *     need the fresh drop schedule) but **overwrite the buy set**
+ *     with the persisted one before caching. Drops drift with
+ *     state, buys don't.
  */
 export async function refreshPlan(
   tierId: number,
@@ -47,22 +67,20 @@ export async function refreshPlan(
     trackedForAlgorithm: boolean;
   }>,
 ): Promise<CachedPlan> {
-  const [snapshots, tierSnapshot, currentWeek] = await Promise.all([
+  const [snapshots, tierSnapshot, currentWeek, tierRow] = await Promise.all([
     loadPlayerSnapshots(tierId),
     loadTierSnapshot(tierId),
     findCurrentRaidWeek(tierId),
+    db
+      .select({ frozenBuys: tierTable.frozenBuys })
+      .from(tierTable)
+      .where(eq(tierTable.id, tierId))
+      .limit(1)
+      .then((rows) => rows[0]),
   ]);
 
   const startingWeekNumber = currentWeek?.weekNumber ?? 1;
 
-  // Floors whose active-week kill is already counted in the input
-  // snapshots' page balances — `loadPlayerSnapshots` walks
-  // `boss_kill` rows when building each player's per-floor page
-  // map, so the planner must skip its own +1 step for those
-  // floors at the first horizon week. Otherwise the W1
-  // recommendation would assume one more page than Track sees and
-  // diverge from "what does the algorithm say should happen for
-  // this kill?" right after it's recorded.
   const alreadyKilledFloors = new Set<number>();
   if (currentWeek) {
     const killedRows = await db
@@ -73,10 +91,77 @@ export async function refreshPlan(
     for (const row of killedRows) alreadyKilledFloors.add(row.floorNumber);
   }
 
-  const floorPlans = computeGreedyPlan(floors, snapshots, tierSnapshot, {
+  const fresh = computeGreedyPlan(floors, snapshots, tierSnapshot, {
     startingWeekNumber,
     alreadyKilledFloors,
   });
+
+  // Frozen-buy logic. Three cases:
+  //
+  //   1. `tier.frozen_buys` is NULL → first plan run for this
+  //      tier (or after a refreeze). Persist the fresh buy set.
+  //
+  //   2. `tier.frozen_buys` is set → use the persisted buys,
+  //      filter out any whose recipient already has the slot
+  //      filled (= already-awarded buys are cleared, since
+  //      `bisCurrent` was updated by `awardLootDropAction`).
+  //
+  // The filtering in (2) is critical so the Plan tab doesn't
+  // keep recommending a buy the operator already executed.
+  let frozenBuys: ReadonlyArray<PlannedBuy & { floorNumber: number }> | null =
+    null;
+  if (tierRow?.frozenBuys) {
+    try {
+      const parsed = JSON.parse(tierRow.frozenBuys) as Array<
+        PlannedBuy & { floorNumber: number }
+      >;
+      if (Array.isArray(parsed)) frozenBuys = parsed;
+    } catch {
+      // Malformed JSON — treat as no frozen buys, will be
+      // re-frozen below.
+    }
+  }
+
+  let floorPlans: FloorPlan[];
+  if (frozenBuys === null) {
+    // First run — freeze whatever the planner produced.
+    floorPlans = fresh;
+    const buysFlat: Array<PlannedBuy & { floorNumber: number }> = [];
+    for (const plan of fresh) {
+      for (const buy of plan.buys) {
+        buysFlat.push({ ...buy, floorNumber: plan.floorNumber });
+      }
+    }
+    await db
+      .update(tierTable)
+      .set({ frozenBuys: JSON.stringify(buysFlat) })
+      .where(eq(tierTable.id, tierId));
+  } else {
+    // Subsequent run — keep frozen buys, swap in fresh drops.
+    // We need to filter out frozen buys whose recipient already
+    // owns the slot (= the operator awarded the buy already, or
+    // a drop filled it instead).
+    const filledByPlayerSlot = new Set<string>();
+    for (const snap of snapshots) {
+      for (const [slot, current] of snap.bisCurrent.entries()) {
+        const desired = snap.bisDesired.get(slot);
+        if (desired && current === desired && desired !== "NotPlanned") {
+          filledByPlayerSlot.add(`${snap.id}|${slot}`);
+        }
+      }
+    }
+    floorPlans = fresh.map((plan) => {
+      const persistedForFloor = frozenBuys.filter(
+        (b) =>
+          b.floorNumber === plan.floorNumber &&
+          !filledByPlayerSlot.has(`${b.playerId}|${b.slot}`),
+      );
+      return {
+        ...plan,
+        buys: persistedForFloor.map(({ floorNumber: _f, ...rest }) => rest),
+      };
+    });
+  }
 
   const computedAt = new Date();
   await db
@@ -99,9 +184,7 @@ export async function refreshPlan(
 
 /**
  * Read the cached plan for a tier, or recompute and cache one if
- * none exists yet. Used on every server render of the tier-detail
- * page so opening the page never blocks on a missing cache while
- * still avoiding spurious re-simulations on unrelated mutations.
+ * none exists yet.
  */
 export async function getCachedOrComputePlan(
   tierId: number,
@@ -120,10 +203,6 @@ export async function getCachedOrComputePlan(
   if (cached) {
     try {
       const parsed = JSON.parse(cached.snapshot) as FloorPlan[];
-      // Sanity-check the shape — same fields v3.x had so any
-      // pre-v4 cache that survived migration 0015 still parses
-      // cleanly. If a future schema change breaks this, fall
-      // through and recompute from current state.
       if (Array.isArray(parsed) && parsed.every(isFloorPlanShape)) {
         return { floorPlans: parsed, computedAt: cached.computedAt };
       }
@@ -135,17 +214,25 @@ export async function getCachedOrComputePlan(
 }
 
 /**
- * Drop a tier's cached plan. Called on Track-tab actions that
- * meaningfully change the input (drop awarded, kill recorded,
- * etc.) so the next Plan render reflects the new state without
- * the operator having to manually click Refresh.
- *
- * BiS edits do NOT trigger invalidation — Plan is intentionally
- * sticky against routine roster tweaks; the operator decides
- * when to recompute.
+ * Drop a tier's cached plan. Called on operator-explicit
+ * actions (Refresh button, week reset). v4.1+ does NOT call
+ * this on routine award/undo/edit — Plan is sticky during
+ * loot distribution.
  */
 export async function invalidatePlanCache(tierId: number): Promise<void> {
   await db.delete(tierPlanCache).where(eq(tierPlanCache.tierId, tierId));
+}
+
+/**
+ * Clear the persisted frozen-buy schedule for a tier so the
+ * next `refreshPlan` recomputes it from the current state.
+ * Used by `refreezeBuysAction` from the Tier-Settings tab.
+ */
+export async function clearFrozenBuys(tierId: number): Promise<void> {
+  await db
+    .update(tierTable)
+    .set({ frozenBuys: null })
+    .where(eq(tierTable.id, tierId));
 }
 
 function isFloorPlanShape(value: unknown): value is FloorPlan {

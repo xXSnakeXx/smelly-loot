@@ -292,7 +292,19 @@
     "ilvLabel": "{source}",
     "save": "Speichern",
     "savedToast": "Tier-Konfiguration gespeichert.",
-    "saveErrorToast": "Speichern fehlgeschlagen."
+    "saveErrorToast": "Speichern fehlgeschlagen.",
+    "refreezeBuys": {
+      "heading": "Page-Buy-Empfehlungen",
+      "description": "Die empfohlenen Pages-K\u00e4ufe werden beim ersten Plan-Lauf eingefroren und bleiben fix \u00fcber das ganze Tier. Klicke hier, wenn die Empfehlungen nicht mehr passen \u2014 z.B. nach Roster-Wechsel oder gr\u00f6\u00dferen BiS-\u00c4nderungen.",
+      "trigger": "Buys neu berechnen",
+      "confirmTitle": "Page-Buys neu berechnen?",
+      "confirmDescription": "Der aktuelle Buy-Plan wird verworfen und neu berechnet basierend auf dem aktuellen Roster, BiS-Profil und Page-Stand. Bereits vergebene Buys bleiben in der Historie.",
+      "cancel": "Abbrechen",
+      "confirm": "Ja, neu berechnen",
+      "confirmInProgress": "Berechne\u2026",
+      "savedToast": "Buys neu berechnet.",
+      "errorToast": "Neuberechnung fehlgeschlagen."
+    }
   },
   "bis": {
     "title": "Best in Slot",

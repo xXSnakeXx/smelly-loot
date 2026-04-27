@@ -1,9 +1,21 @@
 "use client";
 
+import { Coins } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,24 +25,24 @@ import {
   type BisSource,
   deriveSourceIlvs,
 } from "@/lib/ffxiv/slots";
-import { updateTierAction } from "@/lib/tiers/actions";
+import { refreezeBuysAction, updateTierAction } from "@/lib/tiers/actions";
 
 interface TierEditFormProps {
   tier: Tier;
 }
 
 /**
- * Tier-edit form: name + max_ilv only.
+ * Tier-edit form: name + max_ilv + buy-refreeze action.
  *
- * The UI maintains a local preview of the nine derived per-source
- * iLvs so the operator can see what saving with a particular max_ilv
- * would produce. The actual cascade happens in the Server Action so
- * the database value can never disagree with `deriveSourceIlvs`.
+ * The iLv block edits the tier's max-iLv with a live preview of
+ * the nine derived per-source iLvs. The actual cascade happens
+ * in `updateTierAction`.
  *
- * Up to v3.3 this form also embedded a `TierWeightsForm` for the
- * MCMF planner's slot/role weights. v4.0 dropped that feature
- * along with the MCMF planner — the greedy planner computes its
- * bottleneck dynamically from roster need, no operator tuning.
+ * The "Buys neu berechnen" button (v4.1) clears `tier.frozen_buys`
+ * via `refreezeBuysAction` and flushes the plan cache so the
+ * next render regenerates the buy schedule from current state.
+ * Wrapped in an alert-dialog confirmation because it can shift
+ * the recommendations the operator has been working off of.
  */
 export function TierEditForm({ tier }: TierEditFormProps) {
   const t = useTranslations("tierEdit");
@@ -38,6 +50,8 @@ export function TierEditForm({ tier }: TierEditFormProps) {
   const [name, setName] = useState(tier.name);
   const [maxIlv, setMaxIlv] = useState(tier.maxIlv);
   const [pending, startTransition] = useTransition();
+  const [refreezePending, startRefreezeTransition] = useTransition();
+  const [refreezeOpen, setRefreezeOpen] = useState(false);
 
   const previewIlvs = deriveSourceIlvs(maxIlv);
 
@@ -49,64 +63,128 @@ export function TierEditForm({ tier }: TierEditFormProps) {
     });
   };
 
+  const onRefreeze = () => {
+    startRefreezeTransition(async () => {
+      const fd = new FormData();
+      fd.set("tierId", String(tier.id));
+      const result = await refreezeBuysAction(fd);
+      if (result.ok) {
+        toast.success(t("refreezeBuys.savedToast"));
+        setRefreezeOpen(false);
+      } else {
+        toast.error(t("refreezeBuys.errorToast"));
+      }
+    });
+  };
+
   return (
-    <form action={onSubmit} className="flex flex-col gap-4">
-      <input type="hidden" name="tierId" value={tier.id} />
+    <div className="flex flex-col gap-8">
+      <form action={onSubmit} className="flex flex-col gap-4">
+        <input type="hidden" name="tierId" value={tier.id} />
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="tier-name">{t("name.label")}</Label>
-        <Input
-          id="tier-name"
-          name="name"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t("name.placeholder")}
-        />
-      </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="tier-name">{t("name.label")}</Label>
+          <Input
+            id="tier-name"
+            name="name"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("name.placeholder")}
+          />
+        </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="tier-max-ilv">{t("maxIlv.label")}</Label>
-        <Input
-          id="tier-max-ilv"
-          name="maxIlv"
-          type="number"
-          required
-          value={maxIlv}
-          min={100}
-          max={2000}
-          onChange={(e) => setMaxIlv(Number.parseInt(e.target.value, 10) || 0)}
-          className="w-32 font-mono"
-        />
-        <p className="text-xs text-muted-foreground">{t("maxIlv.help")}</p>
-      </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="tier-max-ilv">{t("maxIlv.label")}</Label>
+          <Input
+            id="tier-max-ilv"
+            name="maxIlv"
+            type="number"
+            required
+            value={maxIlv}
+            min={100}
+            max={2000}
+            onChange={(e) =>
+              setMaxIlv(Number.parseInt(e.target.value, 10) || 0)
+            }
+            className="w-32 font-mono"
+          />
+          <p className="text-xs text-muted-foreground">{t("maxIlv.help")}</p>
+        </div>
 
-      <div className="flex flex-col gap-1">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          {t("preview")}
+        <div className="flex flex-col gap-1">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            {t("preview")}
+          </p>
+          <ul className="grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+            {BIS_SOURCES.filter((s) => s !== "NotPlanned").map(
+              (source: BisSource) => (
+                <li
+                  key={source}
+                  className="flex items-baseline justify-between gap-2 text-sm"
+                >
+                  <span className="text-muted-foreground">
+                    {tSources(source)}
+                  </span>
+                  <span className="font-mono">{previewIlvs[source]}</span>
+                </li>
+              ),
+            )}
+          </ul>
+        </div>
+
+        <div>
+          <Button type="submit" disabled={pending}>
+            {t("save")}
+          </Button>
+        </div>
+      </form>
+
+      <div className="flex flex-col gap-2 border-t pt-6">
+        <h3 className="text-sm font-medium">{t("refreezeBuys.heading")}</h3>
+        <p className="max-w-2xl text-xs text-muted-foreground">
+          {t("refreezeBuys.description")}
         </p>
-        <ul className="grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
-          {BIS_SOURCES.filter((s) => s !== "NotPlanned").map(
-            (source: BisSource) => (
-              <li
-                key={source}
-                className="flex items-baseline justify-between gap-2 text-sm"
+        <AlertDialog open={refreezeOpen} onOpenChange={setRefreezeOpen}>
+          <AlertDialogTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="self-start"
+                disabled={refreezePending}
               >
-                <span className="text-muted-foreground">
-                  {tSources(source)}
-                </span>
-                <span className="font-mono">{previewIlvs[source]}</span>
-              </li>
-            ),
-          )}
-        </ul>
+                <Coins className="mr-1.5 size-3.5" />
+                {t("refreezeBuys.trigger")}
+              </Button>
+            }
+          />
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("refreezeBuys.confirmTitle")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("refreezeBuys.confirmDescription")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={refreezePending}>
+                {t("refreezeBuys.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={onRefreeze}
+                disabled={refreezePending}
+              >
+                {refreezePending
+                  ? t("refreezeBuys.confirmInProgress")
+                  : t("refreezeBuys.confirm")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
-
-      <div>
-        <Button type="submit" disabled={pending}>
-          {t("save")}
-        </Button>
-      </div>
-    </form>
+    </div>
   );
 }

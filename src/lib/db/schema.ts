@@ -188,6 +188,15 @@ export const tier = sqliteTable(
     ilvCrafted: integer("ilv_crafted").notNull(),
     ilvWhyyyy: integer("ilv_whyyyy").notNull(),
     ilvJustNo: integer("ilv_just_no").notNull(),
+    /**
+     * Frozen page-buy schedule for the Plan tab (v4.1.0). Once
+     * the planner runs for the first time on this tier the
+     * resulting buy list is persisted here as JSON; subsequent
+     * plan refreshes read it back instead of recomputing buys
+     * from scratch. Cleared by `refreezeBuysAction` when the
+     * operator wants to recompute from current state.
+     */
+    frozenBuys: text("frozen_buys"),
     archivedAt: integer("archived_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
@@ -437,4 +446,44 @@ export const tierPlanCache = sqliteTable("tier_plan_cache", {
 });
 
 export type TierPlanCache = typeof tierPlanCache.$inferSelect;
+
+/**
+ * Per-tier per-player drop counter (v4.1.0).
+ *
+ * The non-bottleneck Greedy-Planner score is purely
+ * counter-driven: `score = -K_COUNTER * tier_drop_count(p)`.
+ * Lower counter = higher priority for the next non-bottleneck
+ * drop. This row is the persistent source of truth for that
+ * counter — Server Actions update it transactionally on every
+ * award / undo / edit / reset.
+ *
+ * Counter semantics:
+ *   - Increments on every drop (`paid_with_pages = false`).
+ *   - Does NOT increment on buys (`paid_with_pages = true`) —
+ *     buys are paid for with the player's own pages and don't
+ *     count as a "free gift" from the boss for fairness.
+ *
+ * Bottleneck-drop assignments INCREMENT the counter (per the
+ * v4.1 design decision: "Bottleneck-Drop influences the counter
+ * but is NOT influenced BY the counter") so cross-floor
+ * fairness still works for top-need players who scoop up a
+ * Ring drop.
+ */
+export const tierPlayerStats = sqliteTable(
+  "tier_player_stats",
+  {
+    tierId: integer("tier_id")
+      .notNull()
+      .references(() => tier.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => player.id, { onDelete: "cascade" }),
+    /** Total drops (NOT buys) the player has received in this tier. */
+    dropCount: integer("drop_count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.tierId, t.playerId] })],
+);
+
+export type TierPlayerStats = typeof tierPlayerStats.$inferSelect;
+export type NewTierPlayerStats = typeof tierPlayerStats.$inferInsert;
 export type NewTierPlanCache = typeof tierPlanCache.$inferInsert;

@@ -350,4 +350,4 @@ Wenn das Verhalten nicht passt:
 | v3.3.1  | 2026-04-26 | MCMF cycle-guard fix                                   |
 | v4.0.0  | 2026-04-26 | Greedy-Planner ersetzt MCMF (BREAKING; Tier-Reset)     |
 | v4.0.1  | 2026-04-26 | Plan-Stickyness; BuyAssign Done-Badge                  |
-| v4.1.0  | tbd        | Frozen Buys + Tier-Counter (Open design decisions A-D) |
+| v4.1.0  | 2026-04-26 | Bottleneck/Non-Bottleneck-Score split, Tier-Counter, Frozen Buys |

@@ -1,6 +1,6 @@
 "use server";
 
-import { and, desc, eq, inArray, max } from "drizzle-orm";
+import { and, desc, eq, inArray, max, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -11,6 +11,7 @@ import {
   floor as floorTable,
   lootDrop,
   raidWeek as raidWeekTable,
+  tierPlayerStats,
 } from "@/lib/db/schema";
 import type { BisSource, ItemKey, Slot } from "@/lib/ffxiv/slots";
 import { slotsForItem, sourceForItem } from "./algorithm";
@@ -268,21 +269,30 @@ export async function awardLootDropAction(
     notes: data.notes ?? null,
   });
 
+  // v4.1 tier-counter: drops increment the per-tier drop_count
+  // for the recipient, buys do NOT. The counter is the primary
+  // fairness signal for non-bottleneck items in the next plan
+  // recompute. Buys are paid for with the player's own pages and
+  // don't count as a free gift from the boss.
+  if (!data.paidWithPages && tierId !== undefined) {
+    await db
+      .insert(tierPlayerStats)
+      .values({ tierId, playerId: data.recipientId, dropCount: 1 })
+      .onConflictDoUpdate({
+        target: [tierPlayerStats.tierId, tierPlayerStats.playerId],
+        set: { dropCount: sql`${tierPlayerStats.dropCount} + 1` },
+      });
+  }
+
   // v4 Plan-stickiness: do NOT invalidate the plan cache here.
   // The Plan tab represents "the schedule we're following this
   // week"; recomputing it after every drop would shuffle the
-  // remaining recipients under the operator's feet, which is
-  // exactly the UX problem the user reported.
+  // remaining recipients under the operator's feet.
   //
   // The cache is only flushed by:
   //   - Refresh button (explicit operator request)
   //   - resetRaidWeekAction (full week reset)
-  //   - container start migration 0014/0016 on version bumps
-  //
-  // Track reads the plan straight out of cache; awarded items
-  // are surfaced from `loot_drop` directly, recommendations from
-  // the (sticky) plan, so the two views stay consistent without
-  // re-running the simulation.
+  //   - container start migration on version bumps
 
   revalidatePath("/", "layout");
   return { ok: true };
@@ -377,6 +387,7 @@ export async function undoLootDropAction(
     .select({
       raidWeekId: lootDrop.raidWeekId,
       recipientId: lootDrop.recipientId,
+      paidWithPages: lootDrop.paidWithPages,
       targetSlot: lootDrop.targetSlot,
       previousCurrentSource: lootDrop.previousCurrentSource,
       tierId: raidWeekTable.tierId,
@@ -410,6 +421,28 @@ export async function undoLootDropAction(
   }
 
   await db.delete(lootDrop).where(eq(lootDrop.id, lootDropId));
+
+  // v4.1 tier-counter: undo decrements drop_count for the
+  // recipient if (and only if) the row was a non-paid drop.
+  // Buys never incremented the counter, so undoing them doesn't
+  // touch it. Counter is clamped to 0.
+  if (
+    !drop.paidWithPages &&
+    drop.recipientId !== null &&
+    drop.tierId !== null
+  ) {
+    await db
+      .update(tierPlayerStats)
+      .set({
+        dropCount: sql`max(0, ${tierPlayerStats.dropCount} - 1)`,
+      })
+      .where(
+        and(
+          eq(tierPlayerStats.tierId, drop.tierId),
+          eq(tierPlayerStats.playerId, drop.recipientId),
+        ),
+      );
+  }
 
   // v4 Plan-stickiness: see awardLootDropAction. Undo doesn't
   // flush the cache either — Plan keeps showing the original
@@ -455,6 +488,7 @@ export async function editLootDropAction(
       itemKey: lootDrop.itemKey,
       raidWeekId: lootDrop.raidWeekId,
       recipientId: lootDrop.recipientId,
+      paidWithPages: lootDrop.paidWithPages,
       targetSlot: lootDrop.targetSlot,
       previousCurrentSource: lootDrop.previousCurrentSource,
       tierId: raidWeekTable.tierId,
@@ -519,6 +553,38 @@ export async function editLootDropAction(
     })
     .where(eq(lootDrop.id, lootDropId));
 
+  // v4.1 tier-counter: move the count from old recipient to
+  // new recipient. Only applies if the row was a non-paid drop
+  // (buys never incremented the counter).
+  if (
+    !drop.paidWithPages &&
+    drop.recipientId !== null &&
+    drop.recipientId !== newRecipientId
+  ) {
+    await db
+      .update(tierPlayerStats)
+      .set({
+        dropCount: sql`max(0, ${tierPlayerStats.dropCount} - 1)`,
+      })
+      .where(
+        and(
+          eq(tierPlayerStats.tierId, drop.tierId),
+          eq(tierPlayerStats.playerId, drop.recipientId),
+        ),
+      );
+    await db
+      .insert(tierPlayerStats)
+      .values({
+        tierId: drop.tierId,
+        playerId: newRecipientId,
+        dropCount: 1,
+      })
+      .onConflictDoUpdate({
+        target: [tierPlayerStats.tierId, tierPlayerStats.playerId],
+        set: { dropCount: sql`${tierPlayerStats.dropCount} + 1` },
+      });
+  }
+
   // v4 Plan-stickiness: edit doesn't flush either; Plan stays
   // exactly as it was for the rest of the week.
   revalidatePath("/", "layout");
@@ -569,6 +635,7 @@ export async function resetRaidWeekAction(
     .select({
       id: lootDrop.id,
       recipientId: lootDrop.recipientId,
+      paidWithPages: lootDrop.paidWithPages,
       targetSlot: lootDrop.targetSlot,
       previousCurrentSource: lootDrop.previousCurrentSource,
     })
@@ -592,6 +659,31 @@ export async function resetRaidWeekAction(
           eq(bisChoice.playerId, drop.recipientId),
           eq(bisChoice.tierId, tierId),
           eq(bisChoice.slot, drop.targetSlot),
+        ),
+      );
+  }
+
+  // v4.1 tier-counter: aggregate decrements by player so we
+  // hit the row once each. Only counts non-paid drops (buys
+  // never incremented the counter).
+  const counterDecrements = new Map<number, number>();
+  for (const drop of drops) {
+    if (drop.recipientId === null || drop.paidWithPages) continue;
+    counterDecrements.set(
+      drop.recipientId,
+      (counterDecrements.get(drop.recipientId) ?? 0) + 1,
+    );
+  }
+  for (const [playerId, decrement] of counterDecrements) {
+    await db
+      .update(tierPlayerStats)
+      .set({
+        dropCount: sql`max(0, ${tierPlayerStats.dropCount} - ${decrement})`,
+      })
+      .where(
+        and(
+          eq(tierPlayerStats.tierId, tierId),
+          eq(tierPlayerStats.playerId, playerId),
         ),
       );
   }

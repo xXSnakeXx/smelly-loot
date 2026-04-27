@@ -7,6 +7,102 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-04-26
+
+### Added
+
+- **Two distinct score regimes for drop allocation.** The Greedy
+  planner now splits the drop-recipient decision into two
+  separate tracks:
+  - **Bottleneck items** (the item with the highest roster need
+    on each floor — Ring on Boss 1 with Savage-heavy rosters,
+    Glaze on Boss 2, etc.) use `INITIAL_NEED_at_floor * 100` as
+    score. The drop counter is **not** a factor in deciding who
+    wins, so a player with high need at this floor takes the
+    bottleneck item even if they've already received several
+    other drops in this tier.
+  - **Non-bottleneck items** (the rest) use `-K_COUNTER * counter`.
+    Need-count is irrelevant; the player with the lowest tier
+    drop count among those who still need the item wins. This
+    rotates the secondary items naturally across the roster.
+
+  The bottleneck-drop winner *does* get their counter
+  incremented — cross-floor fairness still applies. The
+  asymmetry ("influences the counter, not influenced by it")
+  is the v4.1 design point: high-need players get their
+  scarce-resource items, but pay for it in subsequent
+  non-bottleneck rotations.
+
+- **Tier-counter as primary fairness mechanism.** New
+  `tier_player_stats(tier_id, player_id, drop_count)` table
+  persists per-tier drop totals. Server Actions update this
+  transactionally:
+  - `awardLootDropAction`: `+1` on drops (`paid_with_pages = false`),
+    `0` on buys.
+  - `undoLootDropAction`: `−1` on drops, clamped to 0.
+  - `editLootDropAction`: `−1` for the old recipient, `+1` for
+    the new (drops only).
+  - `resetRaidWeekAction`: per-player decrement matching the
+    deleted drops in that week.
+
+  Replaces the v4.0 within-week-fairness penalty as the
+  cross-week spreader. The week-based penalty still exists at
+  −50 per drop in the *same week* (intra-week tie-breaker), but
+  the tier counter is now the primary signal.
+
+- **Frozen page-buy schedule.** New `tier.frozen_buys` JSON
+  column. The first time the planner runs for a tier its buy
+  output is persisted; subsequent refreshes recompute *only*
+  the drop schedule and re-use the persisted buys (filtered to
+  exclude already-awarded ones via `bisCurrent`). This keeps
+  page-buy recommendations stable across the tier's lifespan
+  even when drops shift around.
+
+- **"Recompute buys" action** in Tier-Settings. Clears
+  `tier.frozen_buys` + plan cache so the next render produces
+  a fresh buy schedule from current state. Wrapped in an
+  alert-dialog confirmation. Useful when the operator changes
+  roster, BiS profile, or page balances enough that the
+  original recommendations no longer fit.
+
+- **Item iteration order: highest roster-need first.** Drop
+  phase now sorts items by descending roster-wide open-need
+  before assigning. Bottleneck item naturally lands first
+  (highest need by definition); ties fall back to
+  `floor.itemKeys` order for determinism.
+
+### Changed
+
+- `loadPlayerSnapshots.savageDropsThisTier` now reads from
+  `tier_player_stats.drop_count` instead of counting `loot_drop`
+  rows. The semantics shift slightly: the previous version
+  excluded materials, the new version counts all drops. Materials
+  no longer require the special-case adjustment.
+- The within-week fairness penalty (`-50 * received_this_week`)
+  was removed from the score function. Cross-week spread is now
+  driven entirely by the tier counter; intra-week-fairness
+  emerges naturally because the counter increments after each
+  drop and so within a single week the algorithm rotates
+  across players who haven't been hit yet.
+
+### Migrations
+
+- `0016_v4_1_tier_counter_and_frozen_buys.sql`:
+  - Creates `tier_player_stats` with composite PK (tier_id, player_id).
+  - Backfills `drop_count` from existing `loot_drop` rows where
+    `paid_with_pages = 0` (drops only, not buys).
+  - Adds `tier.frozen_buys` (JSON, nullable).
+  - Flushes the plan cache so the next render uses v4.1 scoring.
+
+### Tests
+
+41/41 green. Three new regression tests pin the v4.1 score
+regime:
+- Bottleneck drops are need-driven, ignoring the counter.
+- Non-bottleneck drops are counter-driven, ignoring need.
+- Bottleneck winners increment the counter so non-bottleneck
+  decisions in the same week shift to other players.
+
 ## [4.0.1] - 2026-04-26
 
 ### Fixed

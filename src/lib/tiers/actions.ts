@@ -11,6 +11,8 @@ import {
   floor,
   player as playerTable,
   tierBuyCost,
+  tierPlanCache as tierPlanCacheTable,
+  tierPlayerStats,
   tier as tierTable,
 } from "@/lib/db/schema";
 import { defaultBisChoicesForJob } from "@/lib/ffxiv/bis-defaults";
@@ -221,9 +223,55 @@ export async function createTierAction(
         })),
       ),
     );
+
+    // v4.1: initialise tier-counter rows for every roster
+    // member at zero. Subsequent awards / undos update these
+    // rows transactionally; missing rows fall back to 0 in the
+    // snapshot loader so this is purely an optimisation /
+    // explicit-state-init.
+    await db.insert(tierPlayerStats).values(
+      teamRoster.map((p) => ({
+        tierId: newTierId,
+        playerId: p.id,
+        dropCount: 0,
+      })),
+    );
   }
 
   // 6. Refresh every page that reads tiers or loot context.
   revalidatePath("/", "layout");
   return { ok: true, tierId: newTierId };
+}
+
+/**
+ * Refreeze the page-buy schedule for a tier.
+ *
+ * Clears `tier.frozen_buys` and `tier_plan_cache` so the next
+ * Plan-tab render runs the planner end-to-end and persists a
+ * fresh buy set. Used when the operator's roster, BiS profile,
+ * or page balances have shifted enough that the original buy
+ * recommendations no longer fit. Triggered by the "Buys neu
+ * berechnen" button in Tier-Settings.
+ */
+export async function refreezeBuysAction(
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = z
+    .object({ tierId: z.coerce.number().int().positive() })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { ok: false, errors: fieldErrors(parsed.error) };
+  }
+  const { tierId } = parsed.data;
+
+  await db
+    .update(tierTable)
+    .set({ frozenBuys: null })
+    .where(eq(tierTable.id, tierId));
+  await db
+    .delete(tierPlanCacheTable)
+    .where(eq(tierPlanCacheTable.tierId, tierId));
+
+  revalidatePath("/", "layout");
+  return { ok: true };
 }

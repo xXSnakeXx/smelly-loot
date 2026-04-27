@@ -9,39 +9,54 @@ import {
 } from "./algorithm";
 
 /**
- * Greedy bottleneck-aware loot planner (v4.0).
+ * Greedy bottleneck-aware loot planner (v4.1).
  *
  * Replaces the v3.x min-cost-flow planner with a deterministic
- * week-by-week simulator. The change in design rationale, briefly:
+ * week-by-week simulator. Two structural design points:
  *
- *   - v3 modelled the whole horizon as a single optimisation
- *     problem and let an MCMF solver pick the assignment that
- *     minimised min-max time-to-BiS. That guaranteed mathematical
- *     optimality but produced schedules where one player could
- *     receive 4–5 drops in a single week (every floor's optimum
- *     pointed to the same player), which doesn't match how real
- *     statics distribute loot.
+ *   1. **Bottleneck per boss is computed once at plan start** as
+ *      the item with the highest roster-wide open need on that
+ *      floor, and held constant for the entire run. Stable,
+ *      explainable plans: "boss 1's bottleneck is and stays Ring".
  *
- *   - v4 takes the operator's heuristic at face value: per boss
- *     there is a *bottleneck item* — the slot the roster needs
- *     the most. Page-buys are spent on the bottleneck (or, if a
- *     player already has it, on the next-most-needed item).
- *     Drops are awarded to the player with the highest open-slot
- *     count at the boss, with intra-week and intra-tier fairness
- *     penalties to spread the love.
+ *   2. **Two distinct score functions** for drop allocation —
+ *      one for the bottleneck item, one for the rest:
  *
- * Two structural properties of the algorithm are worth pinning:
+ *        bottleneck_score(p)     = INITIAL_NEED_at_boss(p) * 100
+ *        nonbottleneck_score(p)  = -K_COUNTER * tier_drop_count(p)
  *
- *   1. **Bottleneck is computed once per (boss) at the start of
- *      the simulation and held constant.** It does NOT recompute
- *      mid-week or mid-simulation. This makes the plan stable
- *      and explainable: "boss 1's bottleneck is and stays Ring".
+ *      Bottleneck drops are pure-need-driven. The drop counter
+ *      is INCREMENTED when a player wins a bottleneck drop, but
+ *      the counter is NOT a factor in deciding who wins it —
+ *      cross-floor fairness still works because the counter
+ *      affects all subsequent non-bottleneck decisions.
  *
- *   2. **The simulation runs until every player has zero open
- *      slots, OR a safety cap is hit.** There's no fixed
- *      `weeksAhead` horizon — the algorithm tells you how many
- *      weeks the tier will take. The Plan-tab UI shows up to the
- *      last week any drop or buy lands.
+ *      Non-bottleneck drops are pure-fairness-driven. The
+ *      player with the lowest counter wins, ties broken by
+ *      iteration order. Need-count is irrelevant — the only
+ *      role of need is the candidate filter ("can this item
+ *      fill a slot the player still wants?").
+ *
+ *   3. **Drop counter is persistent and tracked in
+ *      `tier_player_stats.drop_count`.** It increments only
+ *      on `paid_with_pages = false` rows, i.e. real drops, not
+ *      buys. Buys are paid for with the player's own pages and
+ *      don't count as a fairness-relevant gift from the boss.
+ *
+ *   4. **Item iteration order: sorted by roster need
+ *      descending.** The bottleneck item naturally lands first
+ *      every week (highest need by definition); ties among
+ *      non-bottleneck items fall back to `floor.itemKeys` order
+ *      for determinism.
+ *
+ *   5. **No fixed `weeksAhead` horizon.** The simulation runs
+ *      until every player has zero open slots, or a 50-week
+ *      safety cap fires. The Plan-tab UI shows up to the last
+ *      week any drop or buy lands.
+ *
+ *   6. **Buy schedule uses the same priority rules**: bottleneck
+ *      first if the player still needs it, otherwise the next
+ *      highest-roster-need item the player still needs.
  *
  * The output shape (`FloorPlan[]`) is deliberately the same as
  * the v3 floor-planner so the existing UI components don't need
@@ -126,6 +141,16 @@ export interface GreedyPlanOptions {
 const SAFETY_CAP_DEFAULT = 50;
 
 /**
+ * Penalty per drop in the non-bottleneck score. Each drop a
+ * player has received reduces their score for the next
+ * non-bottleneck drop by this amount. With K=50 a one-drop
+ * difference is enough to flip the winner among otherwise tied
+ * candidates; a four-drop difference effectively excludes a
+ * player until others have caught up.
+ */
+const K_COUNTER = 50;
+
+/**
  * Mutable per-player state during the simulation. Built from a
  * `PlayerSnapshot` once and then mutated as drops/buys land.
  */
@@ -138,30 +163,55 @@ interface PlayerState {
   current: Map<Slot, BisSource>;
   /** Map of floor-number → page balance, mutated. */
   pages: Map<number, number>;
-  /** Cumulative drops in this tier, used by the anti-streak penalty. */
-  receivedThisTier: number;
+  /**
+   * Drop counter for the v4.1 fairness mechanism. Increments on
+   * every drop (NOT buy) the player receives during the
+   * simulation. Initialised from `PlayerSnapshot.savageDropsThisTier`,
+   * which itself is loaded from `tier_player_stats.drop_count`
+   * by the snapshot loader.
+   */
+  dropCount: number;
+  /**
+   * Cache of "how many open slots did this player start with at
+   * floor X" indexed by floor number. Computed once at the
+   * start of the simulation, before any drops are applied. Used
+   * by the bottleneck score, which must NOT decrease as drops
+   * are awarded — the player keeps their initial-need rank.
+   */
+  initialNeedByFloor: Map<number, number>;
 }
 
-function initPlayerState(s: PlayerSnapshot): PlayerState {
-  return {
+function initPlayerState(
+  s: PlayerSnapshot,
+  floors: ReadonlyArray<FloorMeta>,
+): PlayerState {
+  const state: PlayerState = {
     id: s.id,
     name: s.name,
     gearRole: s.gearRole,
     desired: new Map(s.bisDesired),
     current: new Map(s.bisCurrent),
     pages: new Map(s.pages),
-    receivedThisTier: s.savageDropsThisTier,
+    dropCount: s.savageDropsThisTier,
+    initialNeedByFloor: new Map(),
   };
+  // Snapshot initial open-need-at-floor for the bottleneck score.
+  // We compute against a temporary view of (desired, current) that
+  // hasn't been mutated yet — a regular openSlotsAtFloor call
+  // works because state.current still equals the snapshot's
+  // bisCurrent at this point.
+  for (const floor of floors) {
+    state.initialNeedByFloor.set(
+      floor.floorNumber,
+      openSlotsAtFloor(state, floor),
+    );
+  }
+  return state;
 }
 
 /**
  * Does this player still have an open slot that the given item
  * can fill?
- *
- * "Open" means: the desired source for some slot the item covers
- * is set (not NotPlanned), the source matches the item's source
- * (Savage gear vs. TomeUp material), and the player hasn't
- * already filled that slot from any source.
  */
 function hasOpenSlotForItem(state: PlayerState, item: ItemKey): boolean {
   return pickSlotForItem(state, item) !== null;
@@ -170,10 +220,6 @@ function hasOpenSlotForItem(state: PlayerState, item: ItemKey): boolean {
 /**
  * Walk the item's candidate slots in canonical order and return
  * the first one this player still has open. Returns null if none.
- *
- * Canonical order matters for Ring (Ring1 before Ring2) and for
- * materials (Glaze fills Earring before Necklace, etc.) — keeps
- * recommendations stable across reruns.
  */
 function pickSlotForItem(state: PlayerState, item: ItemKey): Slot | null {
   const itemSource = sourceForItem(item);
@@ -188,11 +234,7 @@ function pickSlotForItem(state: PlayerState, item: ItemKey): Slot | null {
   return null;
 }
 
-/**
- * Count the player's open slots at this floor — the primary
- * input to both the drop-recipient score and the buy-priority
- * sort.
- */
+/** Open slots at this floor right now (decreases as drops land). */
 function openSlotsAtFloor(state: PlayerState, floor: FloorMeta): number {
   let count = 0;
   for (const item of floor.itemKeys) {
@@ -209,9 +251,9 @@ function openSlotsAtFloor(state: PlayerState, floor: FloorMeta): number {
 }
 
 /**
- * Roster-wide count of open slots a given item can fill. Used by
- * the bottleneck calculation and by the buy-item picker to
- * prefer items that are still scarce across the team.
+ * Roster-wide count of open slots a given item can fill. Used
+ * by the bottleneck calculation, by the buy-item picker, and to
+ * sort the per-week item iteration order.
  */
 function totalRosterOpenForItem(
   states: ReadonlyArray<PlayerState>,
@@ -233,17 +275,7 @@ function totalRosterOpenForItem(
 
 /**
  * Bottleneck for a floor = the item the roster needs the most.
- *
- * Computed once at the start of the simulation, BEFORE any
- * drops are applied, and held constant for the entire run. This
- * is the design point that makes the plan explainable: when the
- * operator asks "why is the algorithm pushing pages onto Ring
- * over Earring?", the answer is "because at the start of the
- * tier 8 players needed a Ring and only 5 needed an Earring".
- *
- * Returns null when no item at the floor has any roster need
- * (e.g. an extreme floor whose drops aren't part of anyone's
- * BiS), or when the floor is untracked.
+ * Computed once at plan start, held constant for the run.
  */
 function computeBottleneckForFloor(
   floor: FloorMeta,
@@ -260,26 +292,34 @@ function computeBottleneckForFloor(
 }
 
 /**
- * Drop-recipient score. Higher = more deserving of this drop.
+ * Drop-recipient score. Two regimes:
  *
- *   +100 per open slot at this floor          (need primary)
- *    -50 per drop the player got this week    (intra-week fairness)
- *     -5 per drop the player got this tier    (anti-streak)
+ *   - **Bottleneck item**: pure initial-need at this floor.
+ *     `score = initial_need_at_floor(p) * 100`. The drop counter
+ *     does NOT factor in — the player who's furthest from BiS
+ *     at this floor wins, even if they've already received
+ *     several drops in this tier.
  *
- * No bottleneck-bonus term. Drop allocation is intentionally
- * uniform across items at a floor — we want fairness, not
- * centralisation. The bottleneck only steers pages.
+ *   - **Non-bottleneck item**: pure tier-counter penalty.
+ *     `score = -K_COUNTER * drop_count(p)`. Need-count is
+ *     irrelevant; the only role of need is the candidate filter
+ *     (`hasOpenSlotForItem` is checked before score is
+ *     computed). The player with the lowest drop count wins.
+ *
+ * Both scores produce comparable values (negative for non-
+ * bottleneck, positive for bottleneck) but they're never
+ * compared against each other — the caller selects the regime
+ * by the `isBottleneck` flag.
  */
 function dropScore(
   state: PlayerState,
   floor: FloorMeta,
-  receivedThisWeek: number,
+  isBottleneck: boolean,
 ): number {
-  return (
-    100 * openSlotsAtFloor(state, floor) -
-    50 * receivedThisWeek -
-    5 * state.receivedThisTier
-  );
+  if (isBottleneck) {
+    return (state.initialNeedByFloor.get(floor.floorNumber) ?? 0) * 100;
+  }
+  return -K_COUNTER * state.dropCount;
 }
 
 /**
@@ -289,14 +329,15 @@ function dropScore(
 function pickDropWinner(
   item: ItemKey,
   floor: FloorMeta,
+  bottleneck: ItemKey | null,
   states: ReadonlyArray<PlayerState>,
-  receivedThisWeek: Map<number, number>,
 ): PlayerState | null {
+  const isBottleneck = bottleneck === item;
   let best: PlayerState | null = null;
   let bestScore = Number.NEGATIVE_INFINITY;
   for (const state of states) {
     if (!hasOpenSlotForItem(state, item)) continue;
-    const score = dropScore(state, floor, receivedThisWeek.get(state.id) ?? 0);
+    const score = dropScore(state, floor, isBottleneck);
     if (score > bestScore) {
       best = state;
       bestScore = score;
@@ -311,9 +352,6 @@ function pickDropWinner(
  *   Priority 1: the bottleneck item, if the player still needs it.
  *   Priority 2: the item with the highest current roster-wide
  *               open need that the player still needs.
- *
- * Returns null when the player has no open slot at this floor
- * or when no candidate is affordable (caller checks pages).
  */
 function pickBuyItem(
   state: PlayerState,
@@ -326,13 +364,7 @@ function pickBuyItem(
     if (hasOpenSlotForItem(state, item)) candidates.push(item);
   }
   if (candidates.length === 0) return null;
-
-  // Priority 1: bottleneck if the player needs it AND the roster
-  // still needs it (the player's own contribution counts so this
-  // is just `>= 1`).
   if (bottleneck && candidates.includes(bottleneck)) return bottleneck;
-
-  // Priority 2: highest-current-need item the player needs.
   let best: { item: ItemKey; need: number } | null = null;
   for (const item of candidates) {
     const need = totalRosterOpenForItem(states, item);
@@ -343,11 +375,6 @@ function pickBuyItem(
 
 /**
  * Run the planner.
- *
- * Iterates week by week, simulating boss kills + drop assignments
- * + page accrual + page-buys until every player has zero open
- * slots OR the safety cap is hit. Returns one `FloorPlan` per
- * floor for the UI.
  */
 export function computeGreedyPlan(
   floors: ReadonlyArray<FloorMeta>,
@@ -355,7 +382,7 @@ export function computeGreedyPlan(
   tier: TierSnapshot,
   options: GreedyPlanOptions,
 ): FloorPlan[] {
-  const states = snapshots.map(initPlayerState);
+  const states = snapshots.map((s) => initPlayerState(s, floors));
   const safetyCap = options.safetyCap ?? SAFETY_CAP_DEFAULT;
 
   // Bottleneck per tracked floor — computed once on the initial
@@ -368,9 +395,6 @@ export function computeGreedyPlan(
     );
   }
 
-  // Per-floor result accumulators. Tagging with `floorNumber` lets
-  // us interleave floor processing within a week and split back
-  // out at the end.
   const allDrops: Array<PlannedDrop & { floorNumber: number }> = [];
   const allBuys: Array<PlannedBuy & { floorNumber: number }> = [];
   const allUnassigned: Array<UnassignedDrop & { floorNumber: number }> = [];
@@ -379,7 +403,6 @@ export function computeGreedyPlan(
   while (anyPlayerStillOpen(states, floors) && weekIdx < safetyCap) {
     weekIdx += 1;
     const weekNumber = options.startingWeekNumber + weekIdx - 1;
-    const receivedThisWeek = new Map<number, number>();
 
     for (const floor of floors) {
       // ───────────────── Drop phase ─────────────────
@@ -392,8 +415,23 @@ export function computeGreedyPlan(
           });
         }
       } else {
-        for (const item of floor.itemKeys) {
-          const winner = pickDropWinner(item, floor, states, receivedThisWeek);
+        const bottleneck = bottleneckByFloor.get(floor.floorNumber) ?? null;
+        // Iterate items in roster-need order (descending). Stable
+        // sort preserves the floor.itemKeys order on ties.
+        const itemsInOrder = [...floor.itemKeys]
+          .map((item, idx) => ({
+            item,
+            idx,
+            need: totalRosterOpenForItem(states, item),
+          }))
+          .sort((a, b) => {
+            const diff = b.need - a.need;
+            return diff !== 0 ? diff : a.idx - b.idx;
+          })
+          .map(({ item }) => item);
+
+        for (const item of itemsInOrder) {
+          const winner = pickDropWinner(item, floor, bottleneck, states);
           if (!winner) {
             allUnassigned.push({
               floorNumber: floor.floorNumber,
@@ -404,8 +442,6 @@ export function computeGreedyPlan(
           }
           const slot = pickSlotForItem(winner, item);
           if (!slot) {
-            // Defensive — pickDropWinner already filtered to
-            // players with an open slot, but TS doesn't know.
             allUnassigned.push({
               floorNumber: floor.floorNumber,
               week: weekNumber,
@@ -414,11 +450,10 @@ export function computeGreedyPlan(
             continue;
           }
           winner.current.set(slot, sourceForItem(item));
-          winner.receivedThisTier += 1;
-          receivedThisWeek.set(
-            winner.id,
-            (receivedThisWeek.get(winner.id) ?? 0) + 1,
-          );
+          // Drop counter increments on every drop, including
+          // bottleneck drops — see schema.ts and the v4.1 design
+          // note above. Cross-floor fairness depends on this.
+          winner.dropCount += 1;
           allDrops.push({
             floorNumber: floor.floorNumber,
             week: weekNumber,
@@ -432,10 +467,6 @@ export function computeGreedyPlan(
       }
 
       // ───────────────── Page accrual ─────────────────
-      // +1 page for everyone on this floor — except in the very
-      // first simulated week, when the floor's kill is already
-      // counted in the input snapshot (the operator killed the
-      // boss before opening the Plan tab).
       const skipFirstWeekKill =
         weekIdx === 1 && options.alreadyKilledFloors.has(floor.floorNumber);
       if (!skipFirstWeekKill && floor.trackedForAlgorithm) {
@@ -459,9 +490,6 @@ export function computeGreedyPlan(
         return diff !== 0 ? diff : a.id - b.id;
       });
       for (const state of sortedStates) {
-        // Inner safety cap: a single player can plausibly afford
-        // multiple buys per week if they've banked pages, but we
-        // cap at 12 (= the slot count) to bound any pathology.
         let safety = 0;
         while (safety < 12) {
           safety += 1;
@@ -475,7 +503,8 @@ export function computeGreedyPlan(
           if (!slot) break;
           state.pages.set(floor.floorNumber, balance - cost);
           state.current.set(slot, sourceForItem(item));
-          state.receivedThisTier += 1;
+          // Buys do NOT increment the drop counter — the v4.1
+          // counter only tracks free drops, not page-paid buys.
           allBuys.push({
             floorNumber: floor.floorNumber,
             playerId: state.id,

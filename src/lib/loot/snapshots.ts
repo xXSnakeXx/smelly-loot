@@ -10,6 +10,7 @@ import {
   player as playerTable,
   raidWeek as raidWeekTable,
   tierBuyCost,
+  tierPlayerStats,
   tier as tierTable,
 } from "@/lib/db/schema";
 import { jobToGearRole } from "@/lib/ffxiv/jobs";
@@ -154,45 +155,20 @@ export async function loadPlayerSnapshots(
     spentByPlayerFloor.set(`${row.recipientId}|${row.floorNumber}`, total);
   }
 
-  // 5. Savage drops per player (gear, not material, not paid via pages).
-  const savageRows = await db
+  // 5. Tier-wide drop counter for the v4.1 fairness mechanism.
+  //    Source of truth: `tier_player_stats.drop_count`, kept in
+  //    sync by Server Actions (see actions.ts). Falls back to 0
+  //    for players with no row yet.
+  const dropCountRows = await db
     .select({
-      recipientId: lootDrop.recipientId,
-      drops: count(),
+      playerId: tierPlayerStats.playerId,
+      dropCount: tierPlayerStats.dropCount,
     })
-    .from(lootDrop)
-    .innerJoin(raidWeekTable, eq(lootDrop.raidWeekId, raidWeekTable.id))
-    .where(
-      and(eq(raidWeekTable.tierId, tierId), eq(lootDrop.paidWithPages, false)),
-    )
-    .groupBy(lootDrop.recipientId);
-  const savageByPlayer = new Map<number, number>();
-  for (const row of savageRows) {
-    if (row.recipientId === null) continue;
-    savageByPlayer.set(row.recipientId, row.drops);
-  }
-  // Subtract material drops from the savage count — the algorithm
-  // wants gear-only fairness, and materials shouldn't deflate the
-  // factor.
-  const materialDropRows = await db
-    .select({
-      recipientId: lootDrop.recipientId,
-      drops: count(),
-    })
-    .from(lootDrop)
-    .innerJoin(raidWeekTable, eq(lootDrop.raidWeekId, raidWeekTable.id))
-    .where(
-      and(
-        eq(raidWeekTable.tierId, tierId),
-        eq(lootDrop.paidWithPages, false),
-        inArray(lootDrop.itemKey, MATERIAL_KEYS as unknown as ItemKey[]),
-      ),
-    )
-    .groupBy(lootDrop.recipientId);
-  for (const row of materialDropRows) {
-    if (row.recipientId === null) continue;
-    const current = savageByPlayer.get(row.recipientId) ?? 0;
-    savageByPlayer.set(row.recipientId, Math.max(0, current - row.drops));
+    .from(tierPlayerStats)
+    .where(eq(tierPlayerStats.tierId, tierId));
+  const dropCountByPlayer = new Map<number, number>();
+  for (const row of dropCountRows) {
+    dropCountByPlayer.set(row.playerId, row.dropCount);
   }
 
   // 6. Last drop week per (player, floor).
@@ -274,7 +250,7 @@ export async function loadPlayerSnapshots(
       pages,
       materialsReceived:
         materialsByPlayer.get(player.id) ?? new Map<MaterialKey, number>(),
-      savageDropsThisTier: savageByPlayer.get(player.id) ?? 0,
+      savageDropsThisTier: dropCountByPlayer.get(player.id) ?? 0,
       lastDropWeekByFloor,
     };
   });

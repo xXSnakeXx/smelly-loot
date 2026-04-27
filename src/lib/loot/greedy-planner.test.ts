@@ -754,3 +754,173 @@ describe("computeGreedyPlan — recompute after a buy is awarded", () => {
     expect(otherBraceletFills.has(5)).toBe(true); // D
   });
 });
+
+describe("computeGreedyPlan — v4.1 score regimes", () => {
+  it("Bottleneck drops are need-driven, ignoring the counter", () => {
+    // Two-player setup: A has high initial Boss-1 need + a high
+    // existing drop count; B has low initial need + zero drops.
+    // For a bottleneck-item drop, A must win because the
+    // bottleneck score is INITIAL_NEED * 100 and ignores the
+    // counter.
+    const tier = makeTier();
+    const a = makePlayer({
+      id: 1,
+      name: "A",
+      gearRole: "tank",
+      bisDesired: {
+        Earring: "Savage",
+        Necklace: "Savage",
+        Bracelet: "Savage",
+        Ring1: "Savage",
+      },
+      bisCurrent: {
+        Earring: "Crafted",
+        Necklace: "Crafted",
+        Bracelet: "Crafted",
+        Ring1: "Crafted",
+      },
+    });
+    a.savageDropsThisTier = 5; // simulated high counter
+    const b = makePlayer({
+      id: 2,
+      name: "B",
+      gearRole: "healer",
+      bisDesired: { Ring1: "Savage" },
+      bisCurrent: { Ring1: "Crafted" },
+    });
+    // A has 4 Boss-1 needs, B has 1 → bottleneck = Ring (1+1=2 > others).
+    // Wait — bottleneck is highest-roster-need item. With A
+    // needing Earring, Necklace, Bracelet, Ring1 and B needing
+    // Ring1: Earring=1, Necklace=1, Bracelet=1, Ring=2. So
+    // Ring is the bottleneck.
+    // A's bottleneck score = 4 * 100 = 400. B's = 1 * 100 = 100.
+    // A wins despite counter=5. Without the counter-ignoring
+    // bottleneck regime, B would win because counter=0.
+    const plans = computeGreedyPlan([FLOOR_1], [a, b], tier, {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+      safetyCap: 1,
+    });
+    const ringDrop = plans[0]?.drops.find((d) => d.itemKey === "Ring");
+    expect(ringDrop).toBeDefined();
+    expect(ringDrop?.recipientId).toBe(1); // A wins because Initial-Need is highest
+  });
+
+  it("Non-bottleneck drops are counter-driven, ignoring need", () => {
+    // Two players, both need Earring. A has higher Boss-1 need
+    // overall and a non-zero counter; B has lower need and a
+    // zero counter. For a non-bottleneck-item drop (Earring is
+    // not the roster-bottleneck here because we make a Ring-
+    // heavy roster), B wins because the non-bottleneck score
+    // is purely counter-based.
+    const tier = makeTier();
+    const players: PlayerSnapshot[] = [
+      makePlayer({
+        id: 1,
+        name: "A",
+        gearRole: "tank",
+        bisDesired: {
+          Earring: "Savage",
+          Necklace: "Savage",
+          Bracelet: "Savage",
+        },
+        bisCurrent: {
+          Earring: "Crafted",
+          Necklace: "Crafted",
+          Bracelet: "Crafted",
+        },
+      }),
+      makePlayer({
+        id: 2,
+        name: "B",
+        gearRole: "healer",
+        bisDesired: { Earring: "Savage" },
+        bisCurrent: { Earring: "Crafted" },
+      }),
+      // Filler players to make Ring the bottleneck (need 6 Ring
+      // vs. 2 Earring, 1 Necklace, 1 Bracelet).
+      ...["F1", "F2", "F3", "F4", "F5", "F6"].map((name, idx) =>
+        makePlayer({
+          id: idx + 100,
+          name,
+          gearRole: "caster",
+          bisDesired: { Ring1: "Savage" },
+          bisCurrent: { Ring1: "Crafted" },
+        }),
+      ),
+    ];
+    // A has counter=2 already; B has counter=0.
+    players[0]!.savageDropsThisTier = 2;
+    const plans = computeGreedyPlan([FLOOR_1], players, tier, {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+      safetyCap: 1,
+    });
+    const earringDrop = plans[0]?.drops.find((d) => d.itemKey === "Earring");
+    expect(earringDrop).toBeDefined();
+    // B (counter=0) wins over A (counter=2) — non-bottleneck
+    // score is -K * counter, B has -0 = 0, A has -100. B > A.
+    expect(earringDrop?.recipientId).toBe(2);
+  });
+
+  it("Bottleneck winning a drop increments the counter for next week", () => {
+    // Validates that bottleneck-drop winners are counted toward
+    // the tier counter (= cross-floor fairness penalty kicks in).
+    // Two-week sim, two players. W1 Bottleneck → A. W2 should
+    // see A's counter incremented (and influence non-bottleneck
+    // decisions).
+    const tier = makeTier();
+    const a = makePlayer({
+      id: 1,
+      name: "A",
+      gearRole: "tank",
+      bisDesired: {
+        Ring1: "Savage",
+        Earring: "Savage",
+        Necklace: "Savage",
+        Bracelet: "Savage",
+      },
+      bisCurrent: {
+        Ring1: "Crafted",
+        Earring: "Crafted",
+        Necklace: "Crafted",
+        Bracelet: "Crafted",
+      },
+    });
+    const b = makePlayer({
+      id: 2,
+      name: "B",
+      gearRole: "healer",
+      bisDesired: { Earring: "Savage" },
+      bisCurrent: { Earring: "Crafted" },
+    });
+    // Make Ring the bottleneck by adding several Ring-only fillers.
+    const fillers = ["F1", "F2", "F3", "F4", "F5"].map((name, idx) =>
+      makePlayer({
+        id: idx + 100,
+        name,
+        gearRole: "caster",
+        bisDesired: { Ring1: "Savage" },
+        bisCurrent: { Ring1: "Crafted" },
+      }),
+    );
+    const plans = computeGreedyPlan([FLOOR_1], [a, b, ...fillers], tier, {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+      safetyCap: 2,
+    });
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+    // W1 Ring bottleneck → A (A has 4 needs incl Ring1; 1 + 5
+    // fillers compete, all 1-need; A wins with 400 vs 100).
+    const w1Ring = plan.drops.find((d) => d.week === 1 && d.itemKey === "Ring");
+    expect(w1Ring?.recipientId).toBe(1);
+    // W1 Earring (non-bottleneck): A's counter is 1 (from the
+    // Ring win in the same week), B's is 0. B should win.
+    const w1Earring = plan.drops.find(
+      (d) => d.week === 1 && d.itemKey === "Earring",
+    );
+    expect(w1Earring?.recipientId).toBe(2);
+  });
+});
