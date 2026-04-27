@@ -7,6 +7,52 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-04-26
+
+### Fixed
+
+- **Plan tab is now sticky during loot distribution.** v4.0.0
+  invalidated the plan cache after every drop / undo / edit
+  action, which caused the "Dinge werden während der Verteilung
+  aktualisiert" UX problem the user reported: the moment the
+  operator awarded one item, the recommendations for the
+  remaining items in the same week could shuffle to different
+  recipients.
+
+  Fix: removed the implicit `invalidatePlanCache` calls from
+  `awardLootDropAction`, `undoLootDropAction`, and
+  `editLootDropAction`. The plan now changes only when the
+  operator explicitly clicks the Refresh button (or when a
+  full week reset happens). Track tab continues to read the
+  cached plan for recommendations and surfaces the actual
+  awarded recipients from `loot_drop`, so the two views stay
+  consistent without the planner re-running on every click.
+
+- **Plan-tab Buy button no longer allows double-spending pages.**
+  With plan-stickiness, the cached plan keeps showing the buy
+  recommendation even after the operator has clicked Vergeben
+  on it. The button now reads `assignedBuyKeys` (built from the
+  current week's `loot_drop` rows where `paid_with_pages = true`)
+  and renders a disabled "Done" badge for buys already recorded.
+  Without this guard a second click would record a second
+  loot_drop and deduct the page cost twice.
+
+- **Confirmed: greedy planner does not re-recommend slots that
+  were already filled by a buy.** The user reported "ein
+  Gegenstand zurück in die dropliste geworfen — die letzte
+  Person welche ein Bracelet hatte" after a buy was assigned.
+  Adding a regression test (`recompute after a buy is awarded`)
+  with `bisCurrent[Bracelet] = "Savage"` pre-set on the
+  affected player verifies the planner correctly excludes them
+  from any further Bracelet drop or buy recommendation. The
+  symptom was a side-effect of the v4.0.0 cache invalidation;
+  with the stickiness fix it can no longer surface.
+
+### Tests
+
+38/38 green. New regression test: `computeGreedyPlan does not
+re-recommend a slot the player already filled via a buy`.
+
 ## [4.0.0] - 2026-04-26
 
 ### BREAKING

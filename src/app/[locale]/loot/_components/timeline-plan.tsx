@@ -33,6 +33,13 @@ interface TimelinePlanProps {
    * floor of the item being bought from this map.
    */
   floorIdByNumber: Record<number, number>;
+  /**
+   * Set of `${recipientId}|${itemKey}` keys for buys that have
+   * already been recorded for the current raid week. Used to
+   * disable the "Assign" button so the operator can't double-
+   * spend pages by clicking twice.
+   */
+  assignedBuyKeys: ReadonlySet<string>;
 }
 
 /**
@@ -60,6 +67,7 @@ export function TimelinePlan({
   computedAt,
   currentWeekId,
   floorIdByNumber,
+  assignedBuyKeys,
 }: TimelinePlanProps) {
   const t = useTranslations("loot.plan");
   const tFloor = useTranslations("loot.floor");
@@ -220,6 +228,9 @@ export function TimelinePlan({
                               itemKey={buy.itemKey as ItemKey}
                               recipientId={buy.playerId}
                               recipientName={buy.playerName}
+                              alreadyAssigned={assignedBuyKeys.has(
+                                `${buy.playerId}|${buy.itemKey}`,
+                              )}
                             />
                           </TableCell>
                         </TableRow>

@@ -15,6 +15,13 @@ interface BuyAssignButtonProps {
   itemKey: ItemKey;
   recipientId: number;
   recipientName: string;
+  /**
+   * True when the active raid week already contains a
+   * `loot_drop` row for `(recipientId, itemKey, paid_with_pages=true)`.
+   * The button renders as a "done" badge instead of an active
+   * action so the operator can't double-spend pages.
+   */
+  alreadyAssigned: boolean;
 }
 
 /**
@@ -23,13 +30,13 @@ interface BuyAssignButtonProps {
  * Wraps `awardLootDropAction` with `paid_with_pages = true`,
  * which records a loot_drop row for the current raid week
  * tagged as "this player spent floor tokens to buy the item".
- * The action's auto-equip + plan-cache invalidation logic
- * fires the same way it does for a real drop.
+ * The action's auto-equip logic fires the same way it does
+ * for a real drop.
  *
- * Disabled when there's no active raid week or no floor that
- * matches the item's source — e.g. a Plan that was computed
- * before any raid_week row existed has no place to attach
- * the buy. The operator should start a raid week first.
+ * Disabled when there's no active raid week, no floor that
+ * matches the item's source, or the buy has already been
+ * recorded for this week (otherwise re-clicking would deduct
+ * the page cost again on a second loot_drop row).
  */
 export function BuyAssignButton({
   raidWeekId,
@@ -37,12 +44,14 @@ export function BuyAssignButton({
   itemKey,
   recipientId,
   recipientName,
+  alreadyAssigned,
 }: BuyAssignButtonProps) {
   const t = useTranslations("loot.plan.buys");
   const tToast = useTranslations("loot.toasts");
   const [pending, startTransition] = useTransition();
 
-  const disabled = pending || raidWeekId === null || floorId === null;
+  const disabled =
+    pending || alreadyAssigned || raidWeekId === null || floorId === null;
 
   const onClick = () => {
     if (disabled) return;
@@ -71,9 +80,14 @@ export function BuyAssignButton({
       className="h-7 px-2 text-xs"
       onClick={onClick}
       disabled={disabled}
-      title={t("assignTooltip")}
+      title={alreadyAssigned ? t("alreadyAssignedTooltip") : t("assignTooltip")}
     >
-      {pending ? (
+      {alreadyAssigned ? (
+        <>
+          <Check className="size-3.5 mr-1 text-emerald-500" />
+          {t("done")}
+        </>
+      ) : pending ? (
         <Check className="size-3.5" />
       ) : (
         <>

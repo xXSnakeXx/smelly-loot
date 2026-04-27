@@ -268,12 +268,21 @@ export async function awardLootDropAction(
     notes: data.notes ?? null,
   });
 
-  // Auto-equip changes the input the Plan optimiser sees, so the
-  // cached plan from before this drop is now stale. Invalidate so
-  // the next render recomputes against the new state.
-  if (tierId !== undefined) {
-    await invalidatePlanCache(tierId);
-  }
+  // v4 Plan-stickiness: do NOT invalidate the plan cache here.
+  // The Plan tab represents "the schedule we're following this
+  // week"; recomputing it after every drop would shuffle the
+  // remaining recipients under the operator's feet, which is
+  // exactly the UX problem the user reported.
+  //
+  // The cache is only flushed by:
+  //   - Refresh button (explicit operator request)
+  //   - resetRaidWeekAction (full week reset)
+  //   - container start migration 0014/0016 on version bumps
+  //
+  // Track reads the plan straight out of cache; awarded items
+  // are surfaced from `loot_drop` directly, recommendations from
+  // the (sticky) plan, so the two views stay consistent without
+  // re-running the simulation.
 
   revalidatePath("/", "layout");
   return { ok: true };
@@ -402,7 +411,9 @@ export async function undoLootDropAction(
 
   await db.delete(lootDrop).where(eq(lootDrop.id, lootDropId));
 
-  await invalidatePlanCache(drop.tierId);
+  // v4 Plan-stickiness: see awardLootDropAction. Undo doesn't
+  // flush the cache either — Plan keeps showing the original
+  // recommendation; the operator can re-award if they want.
   revalidatePath("/", "layout");
   return { ok: true };
 }
@@ -508,7 +519,8 @@ export async function editLootDropAction(
     })
     .where(eq(lootDrop.id, lootDropId));
 
-  await invalidatePlanCache(drop.tierId);
+  // v4 Plan-stickiness: edit doesn't flush either; Plan stays
+  // exactly as it was for the rest of the week.
   revalidatePath("/", "layout");
   return { ok: true };
 }

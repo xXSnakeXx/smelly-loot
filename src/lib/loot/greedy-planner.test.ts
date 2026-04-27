@@ -630,3 +630,127 @@ describe("computeGreedyPlan — Mini-Beispiel from the design discussion", () =>
     }
   });
 });
+
+describe("computeGreedyPlan — recompute after a buy is awarded", () => {
+  it("does not re-recommend a slot the player already filled via a buy", () => {
+    // v4.0.1 regression: when the operator clicks Vergeben on a
+    // page-buy in the Plan tab, the action layer auto-equips
+    // the slot (sets bisCurrent[slot] = source). On the next
+    // recompute the snapshot reflects that, and the planner
+    // must not re-recommend the same slot to the same player
+    // (neither as a drop nor as another buy).
+    //
+    // We model that "already-bought" state by pre-setting
+    // bisCurrent[Bracelet] = "Savage" on Spieler X before
+    // running the planner. X must not appear in any Bracelet
+    // drop or Bracelet buy in the resulting plan.
+    const profiles: Array<{
+      name: string;
+      role: GearRole;
+      slots: Array<[Slot, BisSource, BisSource]>; // (slot, desired, current)
+    }> = [
+      // X already has Bracelet via a previous (simulated) buy.
+      {
+        name: "X",
+        role: "tank",
+        slots: [
+          ["Bracelet", "Savage", "Savage"], // already filled
+          ["Ring1", "Savage", "Crafted"],
+        ],
+      },
+      // Four other players still need Bracelet.
+      {
+        name: "A",
+        role: "healer",
+        slots: [
+          ["Bracelet", "Savage", "Crafted"],
+          ["Ring1", "Savage", "Crafted"],
+        ],
+      },
+      {
+        name: "B",
+        role: "melee",
+        slots: [
+          ["Bracelet", "Savage", "Crafted"],
+          ["Ring1", "Savage", "Crafted"],
+        ],
+      },
+      {
+        name: "C",
+        role: "phys_range",
+        slots: [
+          ["Bracelet", "Savage", "Crafted"],
+          ["Ring1", "Savage", "Crafted"],
+        ],
+      },
+      {
+        name: "D",
+        role: "caster",
+        slots: [
+          ["Bracelet", "Savage", "Crafted"],
+          ["Ring1", "Savage", "Crafted"],
+        ],
+      },
+      // Three filler Ring-only players.
+      ...["E", "F", "G"].map(
+        (name) =>
+          ({
+            name,
+            role: "tank" as GearRole,
+            slots: [["Ring1", "Savage", "Crafted"]] as Array<
+              [Slot, BisSource, BisSource]
+            >,
+          }) as const,
+      ),
+    ];
+    const players: PlayerSnapshot[] = profiles.map((p, idx) => {
+      const desired: Partial<Record<Slot, BisSource>> = {};
+      const current: Partial<Record<Slot, BisSource>> = {};
+      for (const [slot, d, c] of p.slots) {
+        desired[slot] = d;
+        current[slot] = c;
+      }
+      return makePlayer({
+        id: idx + 1,
+        name: p.name,
+        gearRole: p.role,
+        bisDesired: desired,
+        bisCurrent: current,
+      });
+    });
+
+    const plans = computeGreedyPlan([FLOOR_1], players, makeTier(), {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+    });
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+
+    // X (id=1) must not appear in any Bracelet drop or buy — the
+    // slot was already filled before the simulation started.
+    const xBraceletDrops = plan.drops.filter(
+      (d) => d.itemKey === "Bracelet" && d.recipientId === 1,
+    );
+    const xBraceletBuys = plan.buys.filter(
+      (b) => b.itemKey === "Bracelet" && b.playerId === 1,
+    );
+    expect(xBraceletDrops).toHaveLength(0);
+    expect(xBraceletBuys).toHaveLength(0);
+
+    // The four other Bracelet-needers (A, B, C, D) should each
+    // be served exactly once across drops + buys.
+    const otherBraceletFills = new Set<number>();
+    for (const d of plan.drops.filter((x) => x.itemKey === "Bracelet")) {
+      otherBraceletFills.add(d.recipientId);
+    }
+    for (const b of plan.buys.filter((x) => x.itemKey === "Bracelet")) {
+      otherBraceletFills.add(b.playerId);
+    }
+    expect(otherBraceletFills.size).toBe(4);
+    expect(otherBraceletFills.has(2)).toBe(true); // A
+    expect(otherBraceletFills.has(3)).toBe(true); // B
+    expect(otherBraceletFills.has(4)).toBe(true); // C
+    expect(otherBraceletFills.has(5)).toBe(true); // D
+  });
+});

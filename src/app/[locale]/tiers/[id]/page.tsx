@@ -118,6 +118,13 @@ export default async function TierDetailPage({
       computedAt={planComputedAt}
       currentWeekId={currentWeek?.id ?? null}
       floorIdByNumber={Object.fromEntries(floors.map((f) => [f.number, f.id]))}
+      assignedBuyKeys={
+        new Set(
+          drops
+            .filter((d) => d.paidWithPages && d.recipientId !== null)
+            .map((d) => `${d.recipientId}|${d.itemKey}`),
+        )
+      }
     />
   );
 

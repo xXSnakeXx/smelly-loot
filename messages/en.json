@@ -375,7 +375,9 @@
         "pagesColumn": "Pages",
         "actionColumn": "Action",
         "assign": "Assign",
-        "assignTooltip": "Record this buy as a paid-with-pages drop for the current week."
+        "assignTooltip": "Record this buy as a paid-with-pages drop for the current week.",
+        "done": "Done",
+        "alreadyAssignedTooltip": "This page-buy is already recorded for the current week."
       }
     },
     "noWeeks": {

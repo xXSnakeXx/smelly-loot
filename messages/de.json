@@ -373,7 +373,9 @@
         "pagesColumn": "Pages",
         "actionColumn": "Aktion",
         "assign": "Vergeben",
-        "assignTooltip": "Diesen Buy für die aktuelle Woche als bezahlten Drop erfassen."
+        "assignTooltip": "Diesen Buy für die aktuelle Woche als bezahlten Drop erfassen.",
+        "done": "Vergeben",
+        "alreadyAssignedTooltip": "Dieser Page-Buy wurde bereits in der aktuellen Woche erfasst."
       }
     },
     "noWeeks": {
