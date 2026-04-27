@@ -7,6 +7,44 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-04-26
+
+### Added
+
+- **Sticky Plan tab.** The Plan-tab simulation result is now
+  cached in a new `tier_plan_cache` table and only refreshes when
+  the user clicks the Refresh button. Other tabs (Track, Roster,
+  History) keep updating live as before; the Plan tab is
+  intentionally NOT live so that casual kill-toggling, drop-
+  awarding, BiS edits etc. don't reshuffle the next few weeks of
+  recommendations under the operator. The cache survives server
+  restarts. The button now also surfaces a "Last refreshed ..."
+  timestamp so the operator can decide if the cache is still
+  meaningful.
+
+  Migration `0005` adds the cache table; tier deletion
+  cascade-removes the matching cache row.
+
+### Changed
+
+- **Self-purchase heuristic now follows team-wide demand.** The
+  v2.2 cumulative-buyPower / canonical-SLOTS-order combination
+  picked a player's first unmet slot regardless of how needed
+  the slot was elsewhere on the team. The new rule picks the
+  slot with the highest team-wide demand first, falling back to
+  canonical SLOTS order as the tiebreaker. Practical effect:
+  bottleneck slots (a Ring every raider wants) clear via self-
+  purchase, leaving rare wants for the actual drops.
+
+- **Fully self-served players exit the floor competition.** When
+  every slot a player wanted on a floor is covered by simulated
+  self-purchase, their score for every drop on that floor goes
+  to 0. The drop is then handed to a teammate with genuine
+  remaining need. Reproduces the user's three-player example
+  (A wants Ring; B wants Bracelet+Ring; C wants Earring+
+  Bracelet+Ring; everyone has 3 pages → all buy Ring → A
+  scores 0 on every Floor-1 drop, B/C compete for the rest).
+
 ## [2.2.2] - 2026-04-26
 
 ### Fixed
