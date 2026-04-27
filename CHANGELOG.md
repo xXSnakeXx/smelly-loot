@@ -7,6 +7,82 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-04-26
+
+### Added
+
+- **Auto-equip on award.** When a drop is awarded to a player,
+  the action now picks the first slot the recipient still wants
+  the drop's source on (Savage for gear, TomeUp for materials),
+  sets `bis_choice.current_source` to that source, and records
+  both the `target_slot` and the `previous_current_source` on
+  the loot_drop row. The Plan tab cache is invalidated so the
+  next render reflects the upgrade.
+
+  Slot selection walks `slotsForItem(itemKey)` in canonical
+  order — Ring fills Ring1 first if both are open, Glaze fills
+  the lowest-indexed open accessory TomeUp slot, etc. Auto-
+  equip skips silently if no compatible slot is found.
+
+- **Drop revert with auto-equip rollback.** The Undo button on
+  the History tab (per-drop) and the Track tab (active week)
+  now reads the recorded `previous_current_source`, restores
+  it on the recipient's `bis_choice` row, then deletes the
+  loot_drop. Pre-v3.2 rows have NULL in both columns; for those
+  the action skips the revert and just deletes (legacy
+  semantics preserved).
+
+- **Per-week reset.** A new `resetRaidWeekAction` removes every
+  drop and boss kill tied to a raid week AND rolls back every
+  auto-equipped `bis_choice.current_source` change those drops
+  caused, in id-descending order so chained re-drops on the
+  same slot land on the OLDEST recorded `previous_current_source`.
+  Triggered from the History tab via a destructive-styled
+  button gated by an alert-dialog confirmation.
+
+- **History tab redesign.** Each raid week is now a collapsible
+  card (most recent week defaults to expanded). Header shows
+  the week number, start date, and an `M/N assigned` summary;
+  the body lists drops grouped by floor with:
+  - Item-key chip (amber for materials, neutral for gear).
+  - Recipient name (or "—" italic for unassigned).
+  - `→ Slot` badge showing exactly which slot the drop filled.
+  - Existing `via pages` / `manual override` badges preserved.
+  - Per-drop Undo button (revert with auto-equip rollback).
+  - Per-week Reset button + alert-dialog confirmation.
+
+### Changed
+
+- `loot_drop` schema gains two columns: `target_slot` and
+  `previous_current_source`. Both are nullable; pre-v3.2 rows
+  have NULL in both.
+- `awardLootDropAction` and `undoLootDropAction` now take a
+  side-effect on `bis_choice` rows. Tests calling these
+  actions need to seed bis_choice for any (player, tier, slot)
+  the action is expected to touch.
+- All three actions invalidate the Plan-tab cache before
+  returning so the next page render reflects the post-action
+  state without needing a manual Refresh click.
+
+### Added (UI primitives)
+
+- `src/components/ui/collapsible.tsx` — Base UI Collapsible
+  wrapper consumed by `HistoryWeekCard` for the per-week
+  expand/collapse animation.
+
+### Migrations
+
+- `0009_loot_drop_target_slot.sql` — adds `loot_drop.target_slot`
+  column.
+- `0010_loot_drop_previous_source.sql` — adds
+  `loot_drop.previous_current_source` column. Split from 0009
+  because libsql's drizzle migrator runs each `.sql` file
+  atomically; multi-statement ALTER TABLE migrations on a single
+  table commit unreliably.
+- `0011_flush_plan_cache_v3_2.sql` — flushes `tier_plan_cache`
+  so the next render reflects the new action layer (which
+  invalidates on award/undo).
+
 ## [3.1.0] - 2026-04-26
 
 ### Added

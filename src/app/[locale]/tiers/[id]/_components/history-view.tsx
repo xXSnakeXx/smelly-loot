@@ -3,8 +3,7 @@ import { de as deLocale, enUS as enLocale } from "date-fns/locale";
 import { desc, eq } from "drizzle-orm";
 import { getLocale, getTranslations } from "next-intl/server";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { db } from "@/lib/db";
 import { listPlayersInTier } from "@/lib/db/queries-players";
 import {
@@ -13,22 +12,24 @@ import {
   raidWeek as raidWeekTable,
 } from "@/lib/db/schema";
 
+import { HistoryWeekCard, type HistoryDropRow } from "./history-week-card";
+
 /**
- * Tier-scoped loot history.
+ * Tier-scoped loot history (server entry point).
  *
- * Renders one card per raid week (newest first) with the per-floor
- * drops underneath. Token purchases get a "via pages" badge; manual
- * overrides (drops awarded against the algorithm's recommendation)
- * get a separate "manual override" badge — exactly matching the
- * spreadsheet's annotations.
+ * Fetches every raid week + its drops + floor metadata + roster,
+ * stitches the data into the shape the per-week client card
+ * expects, and renders a stack of cards (newest first).
  *
- * Used by the tier-detail page's History tab. The shape is identical
- * to the legacy `/history` route so the visual rhythm survives the
- * routing reshuffle.
+ * The interactive bits — collapse / expand, per-drop revert,
+ * per-week reset — live in `HistoryWeekCard`. This component
+ * stays a Server Component so the read-side does no extra work
+ * client-side.
  */
 export async function HistoryView({ tierId }: { tierId: number }) {
   const t = await getTranslations("history");
   const dateLocale = (await getLocale()) === "de" ? deLocale : enLocale;
+  const locale = (await getLocale()) === "de" ? "de" : "en";
 
   const [weeks, drops, floors, players] = await Promise.all([
     db
@@ -45,7 +46,10 @@ export async function HistoryView({ tierId }: { tierId: number }) {
         recipientId: lootDrop.recipientId,
         paidWithPages: lootDrop.paidWithPages,
         pickedByAlgorithm: lootDrop.pickedByAlgorithm,
+        targetSlot: lootDrop.targetSlot,
+        previousCurrentSource: lootDrop.previousCurrentSource,
         notes: lootDrop.notes,
+        awardedAt: lootDrop.awardedAt,
       })
       .from(lootDrop)
       .innerJoin(raidWeekTable, eq(lootDrop.raidWeekId, raidWeekTable.id))
@@ -60,12 +64,30 @@ export async function HistoryView({ tierId }: { tierId: number }) {
   ]);
 
   const playerNameById = new Map(players.map((p) => [p.id, p.name]));
+  const floorNumberById = new Map(floors.map((f) => [f.id, f.number]));
 
-  const dropsByWeek = new Map<number, typeof drops>();
+  const dropsByWeek = new Map<number, HistoryDropRow[]>();
   for (const drop of drops) {
+    const recipientName = drop.recipientId
+      ? (playerNameById.get(drop.recipientId) ?? null)
+      : null;
+    const floorNumber = floorNumberById.get(drop.floorId) ?? 0;
+    const row: HistoryDropRow = {
+      id: drop.id,
+      floorId: drop.floorId,
+      floorNumber,
+      itemKey: drop.itemKey,
+      recipientId: drop.recipientId,
+      recipientName,
+      targetSlot: drop.targetSlot,
+      previousCurrentSource: drop.previousCurrentSource,
+      paidWithPages: drop.paidWithPages,
+      pickedByAlgorithm: drop.pickedByAlgorithm,
+      notes: drop.notes,
+    };
     const existing = dropsByWeek.get(drop.raidWeekId);
-    if (existing) existing.push(drop);
-    else dropsByWeek.set(drop.raidWeekId, [drop]);
+    if (existing) existing.push(row);
+    else dropsByWeek.set(drop.raidWeekId, [row]);
   }
 
   if (weeks.length === 0) {
@@ -78,83 +100,31 @@ export async function HistoryView({ tierId }: { tierId: number }) {
     );
   }
 
+  // Default-expand the most recent week; others stay collapsed.
+  const mostRecentWeekId = weeks[0]?.id;
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {weeks.map((week) => {
         const weekDrops = dropsByWeek.get(week.id) ?? [];
-        const dropsByFloor = new Map<number, typeof drops>();
-        for (const drop of weekDrops) {
-          const existing = dropsByFloor.get(drop.floorId);
-          if (existing) existing.push(drop);
-          else dropsByFloor.set(drop.floorId, [drop]);
-        }
-
         return (
-          <Card key={week.id}>
-            <CardHeader className="flex-row items-baseline justify-between">
-              <CardTitle className="text-base font-medium">
-                {t("weekLabel", { number: week.weekNumber })}
-              </CardTitle>
-              <span className="text-xs text-muted-foreground">
-                {t("weekStarted", {
-                  date: format(week.startedAt, "PP", { locale: dateLocale }),
-                })}
-              </span>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {weekDrops.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t("noDrops")}</p>
-              ) : (
-                floors.map((floor) => {
-                  const floorDrops = dropsByFloor.get(floor.id) ?? [];
-                  if (floorDrops.length === 0) return null;
-                  return (
-                    <div key={floor.id} className="flex flex-col gap-1">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        {t("floorLabel", { number: floor.number })}
-                      </p>
-                      <ul className="grid gap-1.5 sm:grid-cols-2">
-                        {floorDrops.map((drop) => (
-                          <li
-                            key={drop.id}
-                            className="flex items-center justify-between gap-2 rounded-md border bg-card/50 px-3 py-1.5 text-sm"
-                          >
-                            <span className="font-mono text-xs">
-                              {drop.itemKey}
-                            </span>
-                            <span className="flex items-center gap-2">
-                              <span className="font-medium">
-                                {drop.recipientId
-                                  ? (playerNameById.get(drop.recipientId) ??
-                                    t("unassigned"))
-                                  : t("unassigned")}
-                              </span>
-                              {drop.paidWithPages ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px]"
-                                >
-                                  {t("viaPages")}
-                                </Badge>
-                              ) : null}
-                              {!drop.pickedByAlgorithm && drop.recipientId ? (
-                                <Badge
-                                  variant="secondary"
-                                  className="text-[10px]"
-                                >
-                                  {t("manualOverride")}
-                                </Badge>
-                              ) : null}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
+          <HistoryWeekCard
+            key={week.id}
+            weekId={week.id}
+            weekNumber={week.weekNumber}
+            startedAtIso={week.startedAt.toISOString()}
+            startedAtLabel={format(week.startedAt, "PPP", {
+              locale: dateLocale,
+            })}
+            drops={weekDrops}
+            floors={floors.map((f) => ({
+              id: f.id,
+              number: f.number,
+              itemKeys: (f.drops as string[]) ?? [],
+            }))}
+            defaultOpen={week.id === mostRecentWeekId}
+            locale={locale}
+          />
         );
       })}
     </div>

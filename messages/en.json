@@ -263,7 +263,15 @@
     "noDrops": "No drops recorded for this week.",
     "viaPages": "via pages",
     "manualOverride": "manual override",
-    "unassigned": "—"
+    "unassigned": "—",
+    "dropsCount": "{assigned}/{total} assigned",
+    "resetWeek": "Reset week",
+    "resetting": "Resetting…",
+    "resetWeekConfirmTitle": "Reset week {number}?",
+    "resetWeekConfirmDescription": "All {drops} drops from this week will be removed and the equipped items rolled back. Boss kills (pages) for this week are also cleared. This cannot be undone.",
+    "confirmReset": "Yes, reset",
+    "cancel": "Cancel",
+    "revertDrop": "Revert this drop"
   },
   "tierEdit": {
     "title": "Tier configuration",

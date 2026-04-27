@@ -350,6 +350,21 @@ export const lootDrop = sqliteTable(
     pickedByAlgorithm: integer("picked_by_algorithm", { mode: "boolean" })
       .notNull()
       .default(false),
+    /**
+     * The slot the drop was equipped onto, if any. NULL when the
+     * drop was awarded before v3.2 (which introduced auto-equip),
+     * or when no compatible unmet slot was found at award time.
+     * Used by `undoLootDropAction` and `resetWeekAction` to know
+     * which `bis_choice` row to roll back.
+     */
+    targetSlot: text("target_slot"),
+    /**
+     * The `bis_choice.current_source` value the recipient had on
+     * `target_slot` BEFORE the drop was awarded. Used by undo and
+     * week-reset to restore the prior state. NULL for pre-v3.2
+     * drops.
+     */
+    previousCurrentSource: text("previous_current_source"),
     scoreSnapshot: text("score_snapshot", { mode: "json" }).$type<unknown>(),
     notes: text("notes"),
     awardedAt: integer("awarded_at", { mode: "timestamp" })

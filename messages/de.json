@@ -261,7 +261,15 @@
     "noDrops": "Keine Drops für diese Woche erfasst.",
     "viaPages": "via Pages",
     "manualOverride": "manueller Override",
-    "unassigned": "—"
+    "unassigned": "—",
+    "dropsCount": "{assigned}/{total} zugewiesen",
+    "resetWeek": "Woche zurücksetzen",
+    "resetting": "Setze zurück…",
+    "resetWeekConfirmTitle": "Woche {number} zurücksetzen?",
+    "resetWeekConfirmDescription": "Alle {drops} Drops dieser Woche werden gelöscht und die zugehörigen ausgerüsteten Items wieder zurückgesetzt. Boss-Kills (Pages) dieser Woche werden ebenfalls entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
+    "confirmReset": "Ja, zurücksetzen",
+    "cancel": "Abbrechen",
+    "revertDrop": "Diesen Drop rückgängig machen"
   },
   "tierEdit": {
     "title": "Tier-Konfiguration",

@@ -1,23 +1,26 @@
 "use server";
 
-import { and, desc, eq, max } from "drizzle-orm";
+import { and, desc, eq, inArray, max } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
 import {
+  bisChoice,
   bossKill,
   floor as floorTable,
   lootDrop,
   raidWeek as raidWeekTable,
 } from "@/lib/db/schema";
-import type { ItemKey } from "@/lib/ffxiv/slots";
+import { type BisSource, type ItemKey, type Slot } from "@/lib/ffxiv/slots";
+import { sourceForItem, slotsForItem } from "./algorithm";
 
-import { refreshPlan } from "./plan-cache";
+import { invalidatePlanCache, refreshPlan } from "./plan-cache";
 import {
   awardLootDropSchema,
   createRaidWeekSchema,
   recordBossKillSchema,
+  resetRaidWeekSchema,
   undoBossKillSchema,
   undoLootDropSchema,
 } from "./schemas";
@@ -164,6 +167,17 @@ export async function undoBossKillAction(
  *  2. "Other player" → flat list pick — passes the chosen recipient
  *     and `pickedByAlgorithm = false`.
  *
+ * Since v3.2 the action also AUTO-EQUIPS the item: it picks the
+ * first slot the recipient still wants the drop's source on, sets
+ * `bis_choice.current_source = sourceForItem(itemKey)` for that
+ * slot, and records both `target_slot` + `previous_current_source`
+ * on the loot_drop row so undo / week-reset can roll back.
+ *
+ * Auto-equip skips silently if no compatible slot is found (rare:
+ * the player already has the source on every relevant slot, or
+ * the item drops on a floor whose tier didn't import a buy_cost
+ * row for it).
+ *
  * The persisted `score_snapshot` is whatever the UI passed in, so
  * historical recommendations remain reproducible even if the
  * algorithm is tweaked.
@@ -192,6 +206,36 @@ export async function awardLootDropAction(
     }
   }
 
+  // Compute target_slot + previous_current_source for the
+  // auto-equip side of the award. If we can't find a slot to fill
+  // (player already at source on every candidate), record both as
+  // NULL so undo knows there's nothing to roll back. The award
+  // itself still happens — the player got the loot, even if it
+  // doesn't change their bisCurrent.
+  const equip = await resolveAutoEquip(data.recipientId, data.itemKey);
+  // The tier this raid_week belongs to, needed for the bis_choice
+  // upsert (bis_choice is keyed on (player_id, tier_id, slot)).
+  const tierIdRow = await db
+    .select({ tierId: raidWeekTable.tierId })
+    .from(raidWeekTable)
+    .where(eq(raidWeekTable.id, data.raidWeekId))
+    .limit(1);
+  const tierId = tierIdRow[0]?.tierId;
+
+  if (equip && tierId !== undefined) {
+    // Update bis_choice.current_source for the equipped slot.
+    await db
+      .update(bisChoice)
+      .set({ currentSource: equip.newSource })
+      .where(
+        and(
+          eq(bisChoice.playerId, data.recipientId),
+          eq(bisChoice.tierId, tierId),
+          eq(bisChoice.slot, equip.targetSlot),
+        ),
+      );
+  }
+
   await db.insert(lootDrop).values({
     raidWeekId: data.raidWeekId,
     floorId: data.floorId,
@@ -199,20 +243,79 @@ export async function awardLootDropAction(
     recipientId: data.recipientId,
     paidWithPages: data.paidWithPages,
     pickedByAlgorithm: data.pickedByAlgorithm,
+    targetSlot: equip?.targetSlot ?? null,
+    previousCurrentSource: equip?.previousCurrentSource ?? null,
     scoreSnapshot: snapshot,
     notes: data.notes ?? null,
   });
 
-  revalidatePath("/loot");
-  revalidatePath("/players");
+  // Auto-equip changes the input the Plan optimiser sees, so the
+  // cached plan from before this drop is now stale. Invalidate so
+  // the next render recomputes against the new state.
+  if (tierId !== undefined) {
+    await invalidatePlanCache(tierId);
+  }
+
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
 /**
+ * Resolve which slot the awarded item should land on for the
+ * recipient and which `bis_choice.current_source` value the row
+ * had before. Returns `null` if no eligible slot exists (player
+ * already at source on every candidate, or no bis_choice rows
+ * are registered for the tier yet).
+ */
+async function resolveAutoEquip(
+  playerId: number,
+  itemKey: ItemKey,
+): Promise<{
+  targetSlot: Slot;
+  previousCurrentSource: BisSource;
+  newSource: BisSource;
+} | null> {
+  const newSource = sourceForItem(itemKey);
+  const candidateSlots = slotsForItem(itemKey);
+  if (candidateSlots.length === 0) return null;
+
+  const rows = await db
+    .select({
+      slot: bisChoice.slot,
+      currentSource: bisChoice.currentSource,
+    })
+    .from(bisChoice)
+    .where(
+      and(
+        eq(bisChoice.playerId, playerId),
+        inArray(bisChoice.slot, candidateSlots as unknown as string[]),
+      ),
+    );
+  // Walk candidate slots in their canonical SLOTS_BY_ITEM_KEY order
+  // (Ring1 before Ring2, Earring before Necklace before Bracelet,
+  // etc.) so a Ring drop fills Ring1 first when both are open.
+  for (const slot of candidateSlots) {
+    const row = rows.find((r) => r.slot === slot);
+    if (!row) continue;
+    if (row.currentSource === newSource) continue; // already at source
+    return {
+      targetSlot: slot,
+      previousCurrentSource: row.currentSource as BisSource,
+      newSource,
+    };
+  }
+  return null;
+}
+
+/**
  * Delete a loot-drop row. Used for the "Undo last assignment"
- * button. Cascades restore the player's page balance / drop count
- * automatically because every snapshot read recomputes from the
- * source rows.
+ * button. Reverts auto-equip when applicable: if the dropped row
+ * has `target_slot + previous_current_source` recorded, the
+ * recipient's `bis_choice.current_source` is rolled back to the
+ * pre-award value before the row is deleted.
+ *
+ * Pre-v3.2 drops have NULL in both columns; for those the action
+ * skips the revert and just deletes (matching legacy semantics).
  */
 export async function undoLootDropAction(
   formData: FormData,
@@ -227,10 +330,125 @@ export async function undoLootDropAction(
   }
   const { lootDropId } = parsed.data;
 
+  const dropRows = await db
+    .select({
+      raidWeekId: lootDrop.raidWeekId,
+      recipientId: lootDrop.recipientId,
+      targetSlot: lootDrop.targetSlot,
+      previousCurrentSource: lootDrop.previousCurrentSource,
+      tierId: raidWeekTable.tierId,
+    })
+    .from(lootDrop)
+    .innerJoin(raidWeekTable, eq(lootDrop.raidWeekId, raidWeekTable.id))
+    .where(eq(lootDrop.id, lootDropId))
+    .limit(1);
+  const drop = dropRows[0];
+  if (!drop) {
+    // Already gone — treat as success so retries are idempotent.
+    revalidatePath("/", "layout");
+    return { ok: true };
+  }
+
+  if (
+    drop.recipientId !== null &&
+    drop.targetSlot !== null &&
+    drop.previousCurrentSource !== null
+  ) {
+    await db
+      .update(bisChoice)
+      .set({ currentSource: drop.previousCurrentSource })
+      .where(
+        and(
+          eq(bisChoice.playerId, drop.recipientId),
+          eq(bisChoice.tierId, drop.tierId),
+          eq(bisChoice.slot, drop.targetSlot),
+        ),
+      );
+  }
+
   await db.delete(lootDrop).where(eq(lootDrop.id, lootDropId));
 
-  revalidatePath("/loot");
-  revalidatePath("/players");
+  await invalidatePlanCache(drop.tierId);
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/**
+ * Reset an entire raid week: delete every boss kill and loot drop
+ * tied to it AND roll back the bis_choice rows each drop touched
+ * via auto-equip. Idempotent; running on an already-empty week is
+ * a no-op.
+ *
+ * Used by the History tab's "Reset week" button. Useful when the
+ * raid leader entered the week with the wrong roster, or when
+ * BiS choices were updated mid-week and the awards no longer
+ * make sense.
+ */
+export async function resetRaidWeekAction(
+  formData: FormData,
+): Promise<LootActionResult> {
+  const parsed = resetRaidWeekSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return {
+      ok: false,
+      reason: "validation",
+      errors: fieldErrors(parsed.error),
+    };
+  }
+  const { raidWeekId } = parsed.data;
+
+  const weekRows = await db
+    .select({ tierId: raidWeekTable.tierId })
+    .from(raidWeekTable)
+    .where(eq(raidWeekTable.id, raidWeekId))
+    .limit(1);
+  const tierId = weekRows[0]?.tierId;
+  if (tierId === undefined) {
+    return { ok: true };
+  }
+
+  // Roll back every auto-equipped drop's bisCurrent before
+  // deleting the rows. Walk in id-descending order so if two
+  // drops touched the same slot in the same week (e.g. a drop
+  // followed by a re-drop), the OLDEST previous_current_source
+  // wins — matching what an operator-level "undo this week"
+  // would expect.
+  const drops = await db
+    .select({
+      id: lootDrop.id,
+      recipientId: lootDrop.recipientId,
+      targetSlot: lootDrop.targetSlot,
+      previousCurrentSource: lootDrop.previousCurrentSource,
+    })
+    .from(lootDrop)
+    .where(eq(lootDrop.raidWeekId, raidWeekId))
+    .orderBy(desc(lootDrop.id));
+
+  for (const drop of drops) {
+    if (
+      drop.recipientId === null ||
+      drop.targetSlot === null ||
+      drop.previousCurrentSource === null
+    ) {
+      continue;
+    }
+    await db
+      .update(bisChoice)
+      .set({ currentSource: drop.previousCurrentSource })
+      .where(
+        and(
+          eq(bisChoice.playerId, drop.recipientId),
+          eq(bisChoice.tierId, tierId),
+          eq(bisChoice.slot, drop.targetSlot),
+        ),
+      );
+  }
+
+  await db.delete(lootDrop).where(eq(lootDrop.raidWeekId, raidWeekId));
+  await db.delete(bossKill).where(eq(bossKill.raidWeekId, raidWeekId));
+
+  await invalidatePlanCache(tierId);
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
