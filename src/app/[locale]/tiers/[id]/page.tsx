@@ -98,7 +98,7 @@ export default async function TierDetailPage({
   // interactions don't reshuffle the next-N-week recommendations
   // while the operator is mid-conversation about who gets what.
   //
-  // When the cache is empty (fresh tier) 
+  // When the cache is empty (fresh tier)
   // computes once and writes it back, so the page never blocks on
   // a cold cache.
   const { timelines, computedAt: planComputedAt } =

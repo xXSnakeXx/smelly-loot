@@ -129,6 +129,19 @@
       "addError": "{count} Spieler konnten nicht hinzugefügt werden.",
       "removed": "{name} aus dem Tier entfernt.",
       "removeError": "Entfernen fehlgeschlagen — bitte erneut versuchen."
+    },
+    "matrix": {
+      "title": "BiS-Übersicht",
+      "description": "Schnellübersicht ähnlich zum Spreadsheet. Jede Zelle zeigt oben die gewünschte Quelle, unten die aktuelle; die Farbe folgt der Spreadsheet-Legende. Klick auf den Namen öffnet den Editor pro Slot.",
+      "playerColumn": "Spieler",
+      "legend": {
+        "bisAchieved": "BiS erreicht",
+        "needsUpgrade": "Upgrade nötig",
+        "nearMax": "Fast Max",
+        "intermediate": "Mittel",
+        "behind": "Zurück",
+        "significantGap": "Großer Abstand"
+      }
     }
   },
   "players": {

@@ -260,7 +260,11 @@ export async function refreshPlanAction(
 ): Promise<LootActionResult> {
   const parsed = refreshPlanSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    return { ok: false, reason: "validation", errors: fieldErrors(parsed.error) };
+    return {
+      ok: false,
+      reason: "validation",
+      errors: fieldErrors(parsed.error),
+    };
   }
   const { tierId } = parsed.data;
 
