@@ -7,6 +7,96 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-04-26
+
+### Changed (BREAKING)
+
+- **Plan algorithm replaced with min-cost max-flow.** The
+  greedy "score per (week, item) and award to top scorer"
+  engine that powered v1.x and v2.x is gone, replaced by a
+  per-floor min-cost max-flow optimiser that decides every
+  drop assignment AND page-buy in a single pass against a
+  single network.
+
+  The new objective is **min-max time-to-BiS**: minimise the
+  latest week any player completes their Savage BiS for the
+  floor. Edge costs are squared completion-week, which
+  approximates min-of-max via min-of-sum-of-squares — late
+  assignments are punished super-linearly so the optimiser
+  spreads work out evenly. Role weights, ilv-gain factors,
+  recency penalties, and fairness factors from the v2 score
+  formula are gone; the flow constraints alone enforce
+  fairness (1 drop per item, 1 player can only fill a slot
+  once, page balances cap purchase capacity).
+
+  Side effect: the algorithm no longer suffers from any of
+  the within-week sequencing artefacts that plagued v2:
+  Bracelet spillover, item-order sensitivity, recency
+  double-penalties, fully-self-served vanishing drops. They
+  literally cannot occur in a single-pass formulation.
+
+- **Plan tab now shows a buy plan alongside the drop plan.**
+  In addition to "who gets which drop in which week", the
+  optimiser emits an explicit "Brad should buy Bracelet
+  starting W4 with 3 pages" list per floor. Page-buys are
+  the natural complement to drop assignments: players whose
+  needs the drops can't reach in the planning horizon are
+  scheduled to self-serve with their accumulated tokens.
+
+- **Track tab now reads from the Plan cache** instead of
+  running its own per-drop scoring. The recommendation
+  shown for each kill in Track is exactly the recipient the
+  Plan tab computed; the two views can never disagree.
+
+- `simulateLootTimeline`, `scoreDrop`, `scoreGear`,
+  `scoreMaterial`, `computePurchasedSlots`, and the entire
+  v2 utility/fairness/recency chain are removed. The
+  remaining content of `algorithm.ts` is the type surface
+  (`PlayerSnapshot`, `TierSnapshot`, `SLOTS_BY_ITEM_KEY`)
+  imported by `floor-planner.ts` and `snapshots.ts`.
+
+### Added
+
+- `src/lib/loot/mcmf.ts` — generic Successive-Shortest-Path
+  min-cost-max-flow solver, ~250 LOC. Graph-shape agnostic
+  so the loot-specific wiring lives in `floor-planner.ts`.
+- `src/lib/loot/floor-planner.ts` — per-floor network
+  builder + `computeFloorPlan` entry point. Builds a flow
+  network with drop nodes, page-buy nodes, and need nodes,
+  solves, and reads off the optimal plan.
+- 8 unit tests in `floor-planner.test.ts` and 7 in
+  `mcmf.test.ts` covering the new code, including a
+  regression test for the v2.5.1 Bracelet spillover scenario.
+
+### Removed
+
+- `src/lib/loot/timeline.ts` and its 444-LOC test file.
+- All v2-era scoring tests in `algorithm.test.ts` (the
+  functions they covered no longer exist).
+
+### Migrations
+
+- `0007_flush_plan_cache_v3.sql` — clears every tier's
+  `tier_plan_cache` row on container start because the
+  cache content shape changed from `TimelineForFloor[]`
+  (v2) to `FloorPlan[]` (v3). The runtime also has a
+  defensive shape check that recomputes if a stale cache
+  somehow survived migration.
+
+### Notes
+
+- Per-floor decomposition is intentional: pages are
+  floor-specific in FF XIV (HW-Edition-I tokens only buy F1
+  gear) so solving each floor independently loses no global
+  optimality and keeps each network small (~50-150 nodes,
+  ~200-400 edges for an 8-player roster on 8 weeks ahead).
+  Each solve runs in well under 1 ms — typically a few
+  hundred microseconds.
+- Materials (Glaze, Twine, Ester) are not yet planned
+  through the new optimiser; they appear as unassigned
+  drops on F2/F3. v3.1 will extend the network to model
+  TomeUp upgrades.
+
 ## [2.5.1] - 2026-04-26
 
 ### Fixed

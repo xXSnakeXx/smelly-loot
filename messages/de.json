@@ -339,7 +339,7 @@
     },
     "plan": {
       "title": "Vorgeschlagene Timeline",
-      "description": "Empfohlene Verteilung für die nächsten {weeksAhead} Wochen pro Boss, berechnet aus aktuellen BiS-Plänen + Page-Beständen. Wird automatisch neu berechnet, sobald echte Drops im Tracking-Tab erfasst werden.",
+      "description": "Optimaler Loot-Pfad für die nächsten {weeksAhead} Wochen pro Boss, berechnet via Min-Cost-Flow. Verteilt Drops UND empfohlene Page-Käufe so, dass alle Spieler möglichst gleichzeitig BiS-fertig werden.",
       "noPlayers": "Lege zuerst Spieler an, um eine Loot-Timeline zu planen.",
       "untrackedFloor": "Manuelle Verteilung — kein Algorithmus",
       "weekColumn": "Woche",
@@ -349,7 +349,14 @@
       "refreshing": "Berechne…",
       "refreshHint": "Plan vom aktuellen Snapshot neu berechnen. Andere Tabs (Tracking, Roster, Historie) aktualisieren automatisch; der Plan-Tab bleibt fix bis du hier klickst.",
       "refreshError": "Plan-Aktualisierung fehlgeschlagen — bitte erneut versuchen.",
-      "computedAt": "Zuletzt berechnet {relative}"
+      "computedAt": "Zuletzt berechnet {relative}",
+      "buys": {
+        "heading": "Empfohlene Page-Käufe",
+        "playerColumn": "Spieler",
+        "slotColumn": "Slot",
+        "weekColumn": "Ab Woche",
+        "pagesColumn": "Pages"
+      }
     },
     "noWeeks": {
       "title": "Noch keine Raid-Woche erfasst.",

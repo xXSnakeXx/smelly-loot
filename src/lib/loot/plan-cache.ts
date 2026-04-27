@@ -1,38 +1,37 @@
 import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { tierPlanCache } from "@/lib/db/schema";
+import { bossKill, floor as floorTable, tierPlanCache } from "@/lib/db/schema";
 import type { ItemKey } from "@/lib/ffxiv/slots";
 
+import { computeFloorPlan, type FloorPlan } from "./floor-planner";
 import {
   findCurrentRaidWeek,
   loadPlayerSnapshots,
   loadTierSnapshot,
 } from "./snapshots";
-import { simulateLootTimeline, type TimelineForFloor } from "./timeline";
 
 /**
- * Plan-tab cache layer.
+ * Plan-tab cache layer (v3.0.0).
  *
- * The Plan tab on the tier-detail page is the only sticky surface
- * in the app — every other tab refreshes live as the operator
- * mutates the underlying data, but the Plan tab caches its
- * `simulateLootTimeline` output here and only recomputes when the
+ * The Plan tab on the tier-detail page caches its
+ * `computeFloorPlan` output here and only recomputes when the
  * user clicks the Refresh button. The rationale lives in the
- * `tier_plan_cache` schema docstring.
+ * `tier_plan_cache` schema docstring: every other tab is live,
+ * but Plan is intentionally sticky so casual BiS edits or drop
+ * recordings on Track don't reshuffle the next few weeks of
+ * plans under the operator's feet.
  *
- * `getCachedOrComputePlan` is the entry point the page uses on
- * every render. `refreshPlan` is the explicit recomputation the
- * Refresh button triggers. Both serialise the simulation output
- * via plain JSON — `TimelineForFloor` doesn't contain any Map /
- * Set values so a round-trip through `JSON.stringify` /
- * `JSON.parse` preserves the shape.
+ * Since v3.0.0 the cache content is `FloorPlan[]` (drops +
+ * page-buys per floor) instead of v2's `TimelineForFloor[]`.
+ * Migration 0007 flushes pre-v3.0 caches on container start so
+ * the new shape is always what the Plan UI sees.
  */
 
 const PLAN_WEEKS_AHEAD = 8;
 
 export interface CachedPlan {
-  timelines: TimelineForFloor[];
+  floorPlans: FloorPlan[];
   computedAt: Date;
 }
 
@@ -40,6 +39,11 @@ export interface CachedPlan {
  * Recompute the Plan-tab simulation and write it back to the
  * cache. Returns the freshly computed plan for the caller's
  * convenience.
+ *
+ * Each floor is solved as an independent min-cost max-flow
+ * problem — pages are floor-specific in FF XIV so per-floor
+ * decomposition loses no global optimality. See `floor-planner.ts`
+ * for the network construction.
  */
 export async function refreshPlan(
   tierId: number,
@@ -57,41 +61,49 @@ export async function refreshPlan(
 
   const startingWeekNumber = currentWeek?.weekNumber ?? 1;
 
-  // Floors whose live `boss_kill` row already incremented the
-  // snapshot's page balances — the simulator must skip its own
-  // `+1 page` step for those on iteration 0 so Plan-Week-1 lines
-  // up with Track's view of the same data. See the v1.5 changelog
-  // entry for the parity fix.
-  const alreadyKilledFloorNumbers: number[] = [];
-  // Note: the page already passes us the current week's killed
-  // floors, but the cache layer is invoked on its own (e.g. via
-  // refreshPlanAction). Re-derive from the live DB instead of
-  // making the caller pass them in — it keeps refresh idempotent.
+  // Floors whose active-week kill is already counted in the input
+  // snapshots' page balances — `loadPlayerSnapshots` walks
+  // `boss_kill` rows when building each player's per-floor page
+  // map, so the planner must skip its own +1 step for those
+  // floors at the first horizon week. Otherwise the W1
+  // recommendation would assume one more page than Track sees and
+  // diverge from "what does the algorithm say should happen for
+  // this kill?" right after it's recorded.
+  const alreadyKilledFloors = new Set<number>();
+  if (currentWeek) {
+    const killedRows = await db
+      .select({ floorNumber: floorTable.number })
+      .from(bossKill)
+      .innerJoin(floorTable, eq(bossKill.floorId, floorTable.id))
+      .where(eq(bossKill.raidWeekId, currentWeek.id));
+    for (const row of killedRows) alreadyKilledFloors.add(row.floorNumber);
+  }
 
-  const timelines = simulateLootTimeline(snapshots, tierSnapshot, {
-    startingWeekNumber,
-    weeksAhead: PLAN_WEEKS_AHEAD,
-    alreadyKilledFloors: alreadyKilledFloorNumbers,
-    floors,
-  });
+  const floorPlans: FloorPlan[] = floors.map((f) =>
+    computeFloorPlan(f, snapshots, tierSnapshot, {
+      startingWeekNumber,
+      weeksAhead: PLAN_WEEKS_AHEAD,
+      alreadyKilledFloors,
+    }),
+  );
 
   const computedAt = new Date();
   await db
     .insert(tierPlanCache)
     .values({
       tierId,
-      snapshot: JSON.stringify(timelines),
+      snapshot: JSON.stringify(floorPlans),
       computedAt,
     })
     .onConflictDoUpdate({
       target: tierPlanCache.tierId,
       set: {
-        snapshot: JSON.stringify(timelines),
+        snapshot: JSON.stringify(floorPlans),
         computedAt,
       },
     });
 
-  return { timelines, computedAt };
+  return { floorPlans, computedAt };
 }
 
 /**
@@ -115,21 +127,46 @@ export async function getCachedOrComputePlan(
     .limit(1);
   const cached = rows[0];
   if (cached) {
-    const timelines = JSON.parse(cached.snapshot) as TimelineForFloor[];
-    return { timelines, computedAt: cached.computedAt };
+    try {
+      const parsed = JSON.parse(cached.snapshot) as FloorPlan[];
+      // Sanity-check: v3.0 entries have a `drops` array AND a
+      // `buys` array. v2.x cached `TimelineForFloor` had `weeks`
+      // instead. If the shape doesn't match, fall through and
+      // recompute (migration 0007 should have caught this on
+      // container start, but defensive check helps for any DB
+      // copied between versions out-of-band).
+      if (Array.isArray(parsed) && parsed.every(isV3FloorPlan)) {
+        return { floorPlans: parsed, computedAt: cached.computedAt };
+      }
+    } catch {
+      // Fall through to recompute on parse error.
+    }
   }
   return refreshPlan(tierId, floors);
 }
 
 /**
- * Drop a tier's cached plan. Used on tier deletion / archival; the
- * cache will be recomputed on the next page render.
+ * Drop a tier's cached plan. Called on Track-tab actions that
+ * meaningfully change the input (drop awarded, kill recorded,
+ * etc.) so the next Plan render reflects the new state without
+ * the operator having to manually click Refresh.
  *
- * Not currently called from anywhere outside tests because tier
- * deletion cascades the cache row via the FK, but kept here so
- * tooling / scripts can wipe the cache without going through the
- * full `refreshPlan` round-trip.
+ * BiS edits do NOT trigger invalidation — Plan is intentionally
+ * sticky against routine roster tweaks; the operator decides
+ * when to recompute.
  */
 export async function invalidatePlanCache(tierId: number): Promise<void> {
   await db.delete(tierPlanCache).where(eq(tierPlanCache.tierId, tierId));
+}
+
+function isV3FloorPlan(value: unknown): value is FloorPlan {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.floorNumber === "number" &&
+    Array.isArray(v.itemKeys) &&
+    Array.isArray(v.drops) &&
+    Array.isArray(v.buys) &&
+    Array.isArray(v.weekNumbers)
+  );
 }

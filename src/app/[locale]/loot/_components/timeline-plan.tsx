@@ -10,13 +10,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { TimelineForFloor } from "@/lib/loot/timeline";
-import { cn } from "@/lib/utils";
+import type { FloorPlan } from "@/lib/loot/floor-planner";
 
 import { RefreshButton } from "./refresh-button";
 
 interface TimelinePlanProps {
-  timelines: TimelineForFloor[];
+  floorPlans: FloorPlan[];
   weeksAhead: number;
   hasPlayers: boolean;
   tierId: number;
@@ -24,22 +23,24 @@ interface TimelinePlanProps {
 }
 
 /**
- * Forward-planning view for the tier-detail Plan tab.
+ * Forward-planning view for the tier-detail Plan tab (v3.0).
  *
- * Renders one card per floor with a Week × Item grid: rows are
- * upcoming weeks, columns are the items the boss drops. Each cell
- * shows the algorithm's planned recipient. For floors marked
- * `tracked_for_algorithm = false` (Topic 3) the grid still lists the
- * items but the cells stay empty — the operator records those drops
- * manually in the Track tab.
+ * Renders one card per floor with two tables:
  *
- * The plan is read from the `tier_plan_cache` table; nothing
- * automatic invalidates it. Only the in-card RefreshButton fires
- * `refreshPlanAction`, which recomputes the simulation and writes
- * the new snapshot back to the cache.
+ *   - Drops grid: Week × Item, cells show the optimal recipient
+ *     for each item the boss drops in each upcoming week.
+ *   - Buys list: per-player page-buy recommendations — "Brad
+ *     should buy Bracelet starting W4 with 3 pages". Surfaces
+ *     the buy-plan that the min-cost-flow optimiser computes
+ *     alongside the drop assignments.
+ *
+ * The plan comes straight from `tier_plan_cache`; nothing
+ * automatic invalidates it on routine BiS/roster edits. Only the
+ * RefreshButton or Track-tab actions (kill recorded, drop
+ * awarded) trigger a recompute.
  */
 export function TimelinePlan({
-  timelines,
+  floorPlans,
   weeksAhead,
   hasPlayers,
   tierId,
@@ -47,6 +48,7 @@ export function TimelinePlan({
 }: TimelinePlanProps) {
   const t = useTranslations("loot.plan");
   const tFloor = useTranslations("loot.floor");
+  const tBuys = useTranslations("loot.plan.buys");
 
   if (!hasPlayers) {
     return (
@@ -75,26 +77,26 @@ export function TimelinePlan({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {timelines.map((floor) => (
-          <Card key={floor.floorNumber}>
+        {floorPlans.map((plan) => (
+          <Card key={plan.floorNumber}>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base font-medium">
-                  {tFloor("label", { number: floor.floorNumber })}
+                  {tFloor("label", { number: plan.floorNumber })}
                 </CardTitle>
-                <Badge variant={floor.tracked ? "default" : "secondary"}>
-                  {floor.tracked ? tFloor("tracked") : t("untrackedFloor")}
+                <Badge variant={plan.tracked ? "default" : "secondary"}>
+                  {plan.tracked ? tFloor("tracked") : t("untrackedFloor")}
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="space-y-4 p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[60px] text-xs">
                       {t("weekColumn")}
                     </TableHead>
-                    {floor.itemKeys.map((item) => (
+                    {plan.itemKeys.map((item) => (
                       <TableHead key={item} className="text-xs">
                         {item}
                       </TableHead>
@@ -102,26 +104,19 @@ export function TimelinePlan({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {floor.weeks.map((week) => (
-                    <TableRow key={week.weekNumber}>
+                  {plan.weekNumbers.map((week) => (
+                    <TableRow key={week}>
                       <TableCell className="font-mono text-xs text-muted-foreground">
-                        {week.weekNumber}
+                        {week}
                       </TableCell>
-                      {floor.itemKeys.map((item) => {
-                        const drop = week.drops.find((d) => d.itemKey === item);
+                      {plan.itemKeys.map((item) => {
+                        const drop = plan.drops.find(
+                          (d) => d.week === week && d.itemKey === item,
+                        );
                         return (
                           <TableCell key={item} className="text-sm">
-                            {drop?.recipientName ? (
-                              <span
-                                className={cn(
-                                  "inline-block rounded-md bg-muted/50 px-2 py-0.5 text-xs",
-                                  // Subtle highlight for "first time this
-                                  // player gets this slot in the plan",
-                                  // detected as drop.score >= 100 (i.e.
-                                  // their effective_need was 1 or more).
-                                  drop.score >= 100 && "font-medium",
-                                )}
-                              >
+                            {drop ? (
+                              <span className="inline-block rounded-md bg-muted/50 px-2 py-0.5 text-xs">
                                 {drop.recipientName}
                               </span>
                             ) : (
@@ -136,6 +131,54 @@ export function TimelinePlan({
                   ))}
                 </TableBody>
               </Table>
+
+              {plan.tracked && plan.buys.length > 0 ? (
+                <div className="border-t px-4 py-3">
+                  <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {tBuys("heading")}
+                  </h4>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">
+                          {tBuys("playerColumn")}
+                        </TableHead>
+                        <TableHead className="text-xs">
+                          {tBuys("slotColumn")}
+                        </TableHead>
+                        <TableHead className="text-xs">
+                          {tBuys("weekColumn")}
+                        </TableHead>
+                        <TableHead className="text-xs">
+                          {tBuys("pagesColumn")}
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {plan.buys.map((buy) => (
+                        <TableRow
+                          key={`${buy.playerId}|${buy.slot}|${buy.completionWeek}`}
+                        >
+                          <TableCell className="text-sm">
+                            {buy.playerName}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <span className="inline-block rounded-md bg-muted/50 px-2 py-0.5 text-xs">
+                              {buy.slot}
+                            </span>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">
+                            {buy.completionWeek}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">
+                            {buy.pagesUsed}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         ))}

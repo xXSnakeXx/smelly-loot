@@ -19,7 +19,6 @@ import { findTierById } from "@/lib/db/queries-tiers";
 import type { ItemKey } from "@/lib/ffxiv/slots";
 import { findCurrentWeek } from "@/lib/loot/actions";
 import { getCachedOrComputePlan } from "@/lib/loot/plan-cache";
-import { loadPlayerSnapshots, loadTierSnapshot } from "@/lib/loot/snapshots";
 
 import { HistoryView } from "./_components/history-view";
 import { RosterView } from "./_components/roster-view";
@@ -71,17 +70,16 @@ export default async function TierDetailPage({
   const dateLocale = (await getLocale()) === "de" ? deLocale : enLocale;
   const isArchived = tier.archivedAt !== null;
 
-  // Plan + Track need the same per-tier data set; History is its own
-  // self-contained server component; Settings just embeds the
-  // tier-edit form.
-  const [floors, players, snapshots, tierSnapshot, currentWeek] =
-    await Promise.all([
-      listFloorsForTier(tier.id),
-      listPlayersInTier(tier.id),
-      loadPlayerSnapshots(tier.id),
-      loadTierSnapshot(tier.id),
-      findCurrentWeek(tier.id),
-    ]);
+  // Plan + Track need the per-tier floor list + roster; the
+  // forward-planning Plan cache encapsulates everything else
+  // (player snapshots, page balances, BiS state) inside its
+  // computation, so the page itself only fetches what it
+  // renders directly.
+  const [floors, players, currentWeek] = await Promise.all([
+    listFloorsForTier(tier.id),
+    listPlayersInTier(tier.id),
+    findCurrentWeek(tier.id),
+  ]);
 
   // Track tab needs the active-week's kills + drops too.
   const [kills, drops] = currentWeek
@@ -101,7 +99,7 @@ export default async function TierDetailPage({
   // When the cache is empty (fresh tier)
   // computes once and writes it back, so the page never blocks on
   // a cold cache.
-  const { timelines, computedAt: planComputedAt } =
+  const { floorPlans, computedAt: planComputedAt } =
     await getCachedOrComputePlan(
       tier.id,
       floors.map((f) => ({
@@ -113,7 +111,7 @@ export default async function TierDetailPage({
 
   const planNode = (
     <TimelinePlan
-      timelines={timelines}
+      floorPlans={floorPlans}
       weeksAhead={DEFAULT_WEEKS_AHEAD}
       hasPlayers={players.length > 0}
       tierId={tier.id}
@@ -128,8 +126,7 @@ export default async function TierDetailPage({
       kills={kills}
       drops={drops}
       players={players}
-      snapshots={snapshots}
-      tierSnapshot={tierSnapshot}
+      floorPlans={floorPlans}
     />
   ) : (
     <Card>

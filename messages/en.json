@@ -341,7 +341,7 @@
     },
     "plan": {
       "title": "Suggested timeline",
-      "description": "Recommended distribution for the next {weeksAhead} weeks per boss, computed from current BiS plans + page balances. Recomputes automatically as real drops are recorded in the Track tab.",
+      "description": "Optimal loot path for the next {weeksAhead} weeks per boss, computed via min-cost flow. Distributes drops AND recommended page-buys so every player reaches BiS as close to simultaneously as possible.",
       "noPlayers": "Add players first to plan a loot timeline.",
       "untrackedFloor": "Manual distribution — no algorithm",
       "weekColumn": "Week",
@@ -351,7 +351,14 @@
       "refreshing": "Refreshing…",
       "refreshHint": "Recompute the plan from the current snapshot. Other tabs (Track, Roster, History) update live; the Plan tab is sticky until you click here.",
       "refreshError": "Plan refresh failed — please retry.",
-      "computedAt": "Last refreshed {relative}"
+      "computedAt": "Last refreshed {relative}",
+      "buys": {
+        "heading": "Recommended page-buys",
+        "playerColumn": "Player",
+        "slotColumn": "Slot",
+        "weekColumn": "From week",
+        "pagesColumn": "Pages"
+      }
     },
     "noWeeks": {
       "title": "No raid weeks recorded yet.",

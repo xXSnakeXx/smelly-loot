@@ -13,11 +13,7 @@ import type {
 } from "@/lib/db/queries-loot";
 import type { listPlayersInTier } from "@/lib/db/queries-players";
 import type { ItemKey } from "@/lib/ffxiv/slots";
-import { scoreDrop } from "@/lib/loot/algorithm";
-import type {
-  loadPlayerSnapshots,
-  loadTierSnapshot,
-} from "@/lib/loot/snapshots";
+import type { FloorPlan } from "@/lib/loot/floor-planner";
 
 /**
  * Per-floor list with kill toggle + drop cards.
@@ -26,6 +22,13 @@ import type {
  * recommendation arrives in the markup. The component is shared
  * between the legacy `/loot` route (kept around for direct linking)
  * and the new `/tiers/[id]` tier-detail page (Track tab).
+ *
+ * Since v3.0.0 Track does NOT re-score drops on its own — it
+ * reads the recommended recipient straight out of the cached
+ * Plan (`floorPlans`) so Plan and Track can never disagree. If
+ * the Plan is stale (cache hasn't been refreshed since the last
+ * relevant edit), Track still shows the prior recommendation;
+ * it's the operator's call when to click Refresh on the Plan tab.
  *
  * `floor.trackedForAlgorithm = false` floors render their drops as
  * a flat "any of the players could take this" list — the algorithm
@@ -37,16 +40,14 @@ export async function TrackView({
   kills,
   drops,
   players,
-  snapshots,
-  tierSnapshot,
+  floorPlans,
 }: {
   currentWeek: { id: number; weekNumber: number };
   floors: Awaited<ReturnType<typeof listFloorsForTier>>;
   kills: Awaited<ReturnType<typeof listBossKillsForWeek>>;
   drops: Awaited<ReturnType<typeof listLootDropsForWeek>>;
   players: Awaited<ReturnType<typeof listPlayersInTier>>;
-  snapshots: Awaited<ReturnType<typeof loadPlayerSnapshots>>;
-  tierSnapshot: Awaited<ReturnType<typeof loadTierSnapshot>>;
+  floorPlans: FloorPlan[];
 }) {
   const tFloor = await getTranslations("loot.floor");
 
@@ -57,6 +58,21 @@ export async function TrackView({
   const dropsByFloorItem = new Map<string, (typeof drops)[number]>();
   for (const drop of drops) {
     dropsByFloorItem.set(`${drop.floorId}|${drop.itemKey}`, drop);
+  }
+
+  // Index plan recommendations for O(1) lookup per drop card.
+  // Key: `${floorNumber}|${weekNumber}|${itemKey}` → recipient.
+  const planByKey = new Map<
+    string,
+    { recipientId: number; recipientName: string }
+  >();
+  for (const plan of floorPlans) {
+    for (const planned of plan.drops) {
+      planByKey.set(`${plan.floorNumber}|${planned.week}|${planned.itemKey}`, {
+        recipientId: planned.recipientId,
+        recipientName: planned.recipientName,
+      });
+    }
   }
 
   return (
@@ -101,29 +117,41 @@ export async function TrackView({
                   const existing = dropsByFloorItem.get(
                     `${floor.id}|${itemKey}`,
                   );
-                  const rankings: RecommendationEntry[] =
-                    floor.trackedForAlgorithm
-                      ? scoreDrop(snapshots, {
-                          itemKey: itemKey as ItemKey,
-                          floorNumber: floor.number,
-                          currentWeek: currentWeek.weekNumber,
-                          tier: tierSnapshot,
-                        }).map((entry) => ({
-                          playerId: entry.player.id,
-                          playerName: entry.player.name,
-                          score: entry.score,
-                          effectiveNeed: entry.breakdown.effectiveNeed,
-                          buyPower: entry.breakdown.buyPower,
-                          roleWeight: entry.breakdown.roleWeight,
-                        }))
-                      : players.map((p) => ({
-                          playerId: p.id,
-                          playerName: p.name,
-                          score: 0,
-                          effectiveNeed: 0,
-                          buyPower: 0,
-                          roleWeight: 1,
-                        }));
+                  const planned = floor.trackedForAlgorithm
+                    ? planByKey.get(
+                        `${floor.number}|${currentWeek.weekNumber}|${itemKey}`,
+                      )
+                    : undefined;
+
+                  // Build the rankings list the DropCard expects:
+                  // recommended player first (sentinel score=100),
+                  // then everyone else for manual override
+                  // (score=0). Track no longer ranks players via
+                  // its own scoring run; the Plan-cache provides
+                  // the single optimal recipient and the rest are
+                  // treated as equivalent override options.
+                  const rankings: RecommendationEntry[] = [];
+                  if (planned) {
+                    rankings.push({
+                      playerId: planned.recipientId,
+                      playerName: planned.recipientName,
+                      score: 100,
+                      effectiveNeed: 1,
+                      buyPower: 0,
+                      roleWeight: 1,
+                    });
+                  }
+                  for (const player of players) {
+                    if (planned && player.id === planned.recipientId) continue;
+                    rankings.push({
+                      playerId: player.id,
+                      playerName: player.name,
+                      score: 0,
+                      effectiveNeed: 0,
+                      buyPower: 0,
+                      roleWeight: 1,
+                    });
+                  }
 
                   const awarded = existing
                     ? {

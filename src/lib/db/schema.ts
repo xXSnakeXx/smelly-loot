@@ -406,9 +406,10 @@ export type NewPageAdjust = typeof pageAdjust.$inferInsert;
  * of plans under their feet.
  *
  * One row per tier. `snapshot` is the JSON-serialised array of
- * `TimelineForFloor` entries the Plan UI renders directly;
- * `computed_at` is shown in the UI as "last refreshed N minutes ago"
- * so the operator can decide if the cache is still meaningful.
+ * `FloorPlan` entries (v3.0+, was `TimelineForFloor` in v2.x) the
+ * Plan UI renders directly; `computed_at` is shown in the UI as
+ * "last refreshed N minutes ago" so the operator can decide if the
+ * cache is still meaningful.
  */
 export const tierPlanCache = sqliteTable("tier_plan_cache", {
   tierId: integer("tier_id")
