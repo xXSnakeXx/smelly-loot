@@ -206,6 +206,19 @@ export async function awardLootDropAction(
     }
   }
 
+  // The tier this raid_week belongs to. Needed for the
+  // bis_choice update (bis_choice is keyed on player + tier +
+  // slot — a player who's in multiple tiers has separate
+  // current/desired source rows per tier and we MUST scope to
+  // the active tier or we'll read the wrong row's
+  // desired_source.
+  const tierIdRow = await db
+    .select({ tierId: raidWeekTable.tierId })
+    .from(raidWeekTable)
+    .where(eq(raidWeekTable.id, data.raidWeekId))
+    .limit(1);
+  const tierId = tierIdRow[0]?.tierId;
+
   // Compute target_slot + previous_current_source for the
   // auto-equip side of the award. v3.2.2 design: the action
   // ALWAYS records the drop (operator freedom — the loot was
@@ -222,15 +235,10 @@ export async function awardLootDropAction(
   // honour the operator's pick; gate-keeping there created a
   // confusing UX where stale Plan caches could surface "rejected"
   // toasts for legitimate-looking Award buttons.
-  const equip = await resolveAutoEquip(data.recipientId, data.itemKey);
-  // The tier this raid_week belongs to, needed for the bis_choice
-  // upsert (bis_choice is keyed on (player_id, tier_id, slot)).
-  const tierIdRow = await db
-    .select({ tierId: raidWeekTable.tierId })
-    .from(raidWeekTable)
-    .where(eq(raidWeekTable.id, data.raidWeekId))
-    .limit(1);
-  const tierId = tierIdRow[0]?.tierId;
+  const equip =
+    tierId !== undefined
+      ? await resolveAutoEquip(data.recipientId, tierId, data.itemKey)
+      : null;
 
   if (equip && tierId !== undefined) {
     // Update bis_choice.current_source for the equipped slot.
@@ -277,15 +285,20 @@ export async function awardLootDropAction(
  *
  * "Eligible" = the recipient has `bisDesired = sourceForItem(itemKey)`
  * on at least one of the candidate slots AND doesn't already have
- * that source equipped. v3.2.1 tightens the original loose check
- * (which only required `bisCurrent !== source`) so that a manual
- * override can't accidentally promote a slot the player explicitly
- * does NOT want at the drop's source — the algorithm's promise is
- * "fastest path to BiS", not "promote any slot just because the
- * recipient took the loot".
+ * that source equipped. Auto-equip skips manual overrides to
+ * non-BiS recipients (their `bisCurrent` stays untouched);
+ * the loot_drop is still recorded for the raid history.
+ *
+ * v3.2.3 BUG FIX: scopes the bis_choice lookup to the tier the
+ * award belongs to. Pre-fix, a player who was in multiple tiers
+ * (because tiers are independent BiS contexts) would have their
+ * desired_source read from a different tier's row — and a
+ * Necklace-Savage drop on tier 6 would silently skip auto-equip
+ * because tier 1's Necklace row had desired=TomeUp.
  */
 async function resolveAutoEquip(
   playerId: number,
+  tierId: number,
   itemKey: ItemKey,
 ): Promise<{
   targetSlot: Slot;
@@ -306,6 +319,7 @@ async function resolveAutoEquip(
     .where(
       and(
         eq(bisChoice.playerId, playerId),
+        eq(bisChoice.tierId, tierId),
         inArray(bisChoice.slot, candidateSlots as unknown as string[]),
       ),
     );

@@ -7,6 +7,52 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.2.3] - 2026-04-26
+
+### Fixed
+
+- **`resolveAutoEquip` now scopes the `bis_choice` lookup by
+  `tier_id`.** Pre-fix, the function loaded every row a player
+  had on the candidate slots — across ALL tiers — and walked
+  them in their natural insert order. A player who'd been on a
+  Heavyweight (tier 1) roster with `Necklace = TomeUp` would
+  see that row first; the `desiredSource !== source` check then
+  skipped, returning null even when tier 6's `Necklace = Savage`
+  row was the one the award belonged to.
+  Symptom: every drop in v3.2.0–v3.2.2 was recorded with
+  `target_slot = NULL` and `previous_current_source = NULL`,
+  the recipient's `bis_choice.current_source` was never updated,
+  and the Roster-tab BiS matrix kept showing Crafted on every
+  slot regardless of how many drops were awarded.
+
+  Fix: `resolveAutoEquip` now takes a `tierId` parameter that's
+  derived in `awardLootDropAction` from the raid_week's `tier_id`,
+  and the bis_choice query adds `eq(bisChoice.tierId, tierId)`
+  so only the active tier's row matches.
+
+- **One-time data backfill.** Every `loot_drop` from before the
+  fix that has `target_slot = NULL`, `recipient_id IS NOT NULL`,
+  and a tier whose recipient has a matching `bisDesired === source`
+  on at least one candidate slot is retroactively auto-equipped:
+  the recipient's `bis_choice.current_source` is updated to the
+  drop's source and the `target_slot` / `previous_current_source`
+  columns on the loot_drop row are filled in. After that, undo /
+  week-reset works correctly on those legacy drops too. (Run
+  manually as a one-off; no migration file needed because the
+  fix is forward-only — new awards land correctly.)
+
+- Plan cache flushed as part of the backfill so the next render
+  reflects the post-equip BiS state.
+
+### Notes
+
+- The Roster-tab BiS matrix now shows the correct
+  `bisCurrent` for every player whose drops landed on
+  BiS-eligible slots in any prior week.
+- The 47-test suite still passes; the action layer continues
+  to be smoke-tested against the live SQLite via the
+  award/undo round-trip.
+
 ## [3.2.2] - 2026-04-26
 
 ### Reverted from v3.2.1
