@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-04-26
+
+### Added
+
+- **At-a-glance BiS matrix on the Roster tab.** The previous
+  per-player BiS table required clicking into each raider to see
+  what they had vs. what they wanted; the matrix solves that with
+  a spreadsheet-style grid (rows = players, columns = the 11
+  wearable slots). Each cell shows the desired source code on top
+  ("S" Savage, "T+" TomeUp, "C" Catchup, etc.) and the current
+  source underneath, colour-coded with the spreadsheet legend
+  (purple = BiS achieved, amber = needs upgrade, rose = gap, ...).
+
+  The Offhand column is omitted on purpose — only Paladins wear
+  one, and a 7/8-empty column was just noise. Per-slot Offhand
+  edits still happen via the per-player BiS editor at
+  `/tiers/[tid]/players/[pid]`. Player names in the matrix link
+  there directly so the matrix → editor → matrix loop stays
+  tight.
+
+  Backed by a new `listBisChoicesForTier(tierId)` query that
+  pulls all BiS rows for the tier in one round-trip; the matrix
+  builds a per-(player, slot) lookup and renders the 8 × 11 grid
+  without N+1 reads. Translations gain `roster.matrix.*` in DE +
+  EN.
+
 ## [2.3.0] - 2026-04-26
 
 ### Added
