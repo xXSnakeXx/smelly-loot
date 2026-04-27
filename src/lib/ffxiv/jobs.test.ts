@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  DEFAULT_ROLE_WEIGHTS,
-  GEAR_ROLES,
-  JOB_CODES,
-  jobToGearRole,
-} from "./jobs";
+import { GEAR_ROLES, JOB_CODES, jobToGearRole } from "./jobs";
 
 describe("jobToGearRole", () => {
   it("classifies the four tank jobs as `tank`", () => {
@@ -58,26 +53,6 @@ describe("JOB_CODES", () => {
       const role = jobToGearRole(job);
       expect(role).toBeDefined();
       expect(GEAR_ROLES).toContain(role);
-    }
-  });
-});
-
-describe("DEFAULT_ROLE_WEIGHTS", () => {
-  it("matches the v3.3 design (DPS slight preference)", () => {
-    expect(DEFAULT_ROLE_WEIGHTS).toEqual({
-      tank: 1.0,
-      healer: 1.0,
-      melee: 0.95,
-      phys_range: 0.95,
-      caster: 0.95,
-    });
-  });
-
-  it("keeps every weight inside the configurable range [0.1, 2.0]", () => {
-    for (const role of GEAR_ROLES) {
-      const w = DEFAULT_ROLE_WEIGHTS[role];
-      expect(w).toBeGreaterThanOrEqual(0.1);
-      expect(w).toBeLessThanOrEqual(2.0);
     }
   });
 });

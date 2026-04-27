@@ -97,35 +97,3 @@ const JOB_TO_ROLE: Record<JobCode, GearRole> = {
 export function jobToGearRole(job: string): GearRole | undefined {
   return JOB_TO_ROLE[job as JobCode];
 }
-
-/**
- * Default per-role weight for the v3 min-cost-flow loot planner.
- *
- * In the v3 algorithm, edge cost is multiplicative — LOWER value
- * = cheaper drop edge = the optimiser prefers that role. Defaults
- * give DPS roles (melee / phys-range / caster) a 0.95 discount,
- * which translates to "DPS gets first pick when otherwise tied".
- * Tank and healer stay at 1.0.
- *
- * The "ab 2 verbleibenden Items DPS nicht mehr bevorzugen" cap
- * falls out automatically from the network construction: page-
- * buy edges already exist for every unfulfilled need, so once a
- * DPS has only a couple of slots left and their page budget
- * covers them, drops naturally route to other roles whose
- * page balance can't cover their remaining needs. No explicit
- * cap parameter needed.
- *
- * v2 used these as multipliers (HIGHER = preferred); v3 inverts
- * the semantic. This is the source of truth and the tier-settings
- * UI provides per-tier overrides.
- */
-export const DEFAULT_ROLE_WEIGHTS: Record<GearRole, number> = {
-  tank: 1.0,
-  healer: 1.0,
-  melee: 0.95,
-  phys_range: 0.95,
-  caster: 0.95,
-};
-
-/** @deprecated v2 export kept for backwards-compat tests. Use DEFAULT_ROLE_WEIGHTS. */
-export const ROLE_WEIGHTS: Record<GearRole, number> = DEFAULT_ROLE_WEIGHTS;

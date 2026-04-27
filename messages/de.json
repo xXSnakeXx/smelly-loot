@@ -292,28 +292,7 @@
     "ilvLabel": "{source}",
     "save": "Speichern",
     "savedToast": "Tier-Konfiguration gespeichert.",
-    "saveErrorToast": "Speichern fehlgeschlagen.",
-    "weights": {
-      "heading": "Verteilungs-Gewichte",
-      "description": "Feinjustierung der Loot-Verteilung. Werte zwischen 0,1 und 2,0. Niedrigere Werte = höhere Priorität (kürzere Time-to-BiS).",
-      "save": "Gewichte speichern",
-      "resetDefaults": "Standardwerte",
-      "savedToast": "Gewichte gespeichert.",
-      "saveErrorToast": "Speichern der Gewichte fehlgeschlagen.",
-      "slots": {
-        "heading": "Slot-Gewichte",
-        "description": "Niedrige Werte priorisieren den Slot (z.B. Brust/Hose haben mehr Sub-Stats und werden früher zugewiesen)."
-      },
-      "roles": {
-        "heading": "Rollen-Gewichte",
-        "description": "Niedrige Werte priorisieren die Rolle bei Konflikten (z.B. DPS leicht bevorzugt).",
-        "tank": "Tank",
-        "healer": "Heiler",
-        "melee": "Melee DPS",
-        "ranged": "Ranged DPS",
-        "caster": "Caster DPS"
-      }
-    }
+    "saveErrorToast": "Speichern fehlgeschlagen."
   },
   "bis": {
     "title": "Best in Slot",

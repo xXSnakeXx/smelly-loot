@@ -15,8 +15,6 @@ import {
 } from "@/lib/ffxiv/slots";
 import { updateTierAction } from "@/lib/tiers/actions";
 
-import { TierWeightsForm } from "./tier-weights-form";
-
 interface TierEditFormProps {
   tier: Tier;
 }
@@ -29,10 +27,10 @@ interface TierEditFormProps {
  * would produce. The actual cascade happens in the Server Action so
  * the database value can never disagree with `deriveSourceIlvs`.
  *
- * Below the iLv block, the planner's slot+role priority weights
- * are exposed via `TierWeightsForm` — it owns its own submission
- * via `updateTierWeightsAction` so the two settings groups don't
- * have to validate or persist together.
+ * Up to v3.3 this form also embedded a `TierWeightsForm` for the
+ * MCMF planner's slot/role weights. v4.0 dropped that feature
+ * along with the MCMF planner — the greedy planner computes its
+ * bottleneck dynamically from roster need, no operator tuning.
  */
 export function TierEditForm({ tier }: TierEditFormProps) {
   const t = useTranslations("tierEdit");
@@ -52,79 +50,63 @@ export function TierEditForm({ tier }: TierEditFormProps) {
   };
 
   return (
-    <>
-      <form action={onSubmit} className="flex flex-col gap-4">
-        <input type="hidden" name="tierId" value={tier.id} />
+    <form action={onSubmit} className="flex flex-col gap-4">
+      <input type="hidden" name="tierId" value={tier.id} />
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="tier-name">{t("name.label")}</Label>
-          <Input
-            id="tier-name"
-            name="name"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t("name.placeholder")}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="tier-max-ilv">{t("maxIlv.label")}</Label>
-          <Input
-            id="tier-max-ilv"
-            name="maxIlv"
-            type="number"
-            required
-            value={maxIlv}
-            min={100}
-            max={2000}
-            onChange={(e) =>
-              setMaxIlv(Number.parseInt(e.target.value, 10) || 0)
-            }
-            className="w-32 font-mono"
-          />
-          <p className="text-xs text-muted-foreground">{t("maxIlv.help")}</p>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            {t("preview")}
-          </p>
-          <ul className="grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
-            {BIS_SOURCES.filter((s) => s !== "NotPlanned").map(
-              (source: BisSource) => (
-                <li
-                  key={source}
-                  className="flex items-baseline justify-between gap-2 text-sm"
-                >
-                  <span className="text-muted-foreground">
-                    {tSources(source)}
-                  </span>
-                  <span className="font-mono">{previewIlvs[source]}</span>
-                </li>
-              ),
-            )}
-          </ul>
-        </div>
-
-        <div>
-          <Button type="submit" disabled={pending}>
-            {t("save")}
-          </Button>
-        </div>
-      </form>
-
-      <div className="mt-8 border-t pt-6">
-        <h2 className="mb-2 text-base font-medium">{t("weights.heading")}</h2>
-        <p className="mb-4 max-w-2xl text-xs text-muted-foreground">
-          {t("weights.description")}
-        </p>
-        <TierWeightsForm
-          tierId={tier.id}
-          initialSlotWeights={tier.slotWeights ?? null}
-          initialRoleWeights={tier.roleWeights ?? null}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="tier-name">{t("name.label")}</Label>
+        <Input
+          id="tier-name"
+          name="name"
+          required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("name.placeholder")}
         />
       </div>
-    </>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="tier-max-ilv">{t("maxIlv.label")}</Label>
+        <Input
+          id="tier-max-ilv"
+          name="maxIlv"
+          type="number"
+          required
+          value={maxIlv}
+          min={100}
+          max={2000}
+          onChange={(e) => setMaxIlv(Number.parseInt(e.target.value, 10) || 0)}
+          className="w-32 font-mono"
+        />
+        <p className="text-xs text-muted-foreground">{t("maxIlv.help")}</p>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          {t("preview")}
+        </p>
+        <ul className="grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+          {BIS_SOURCES.filter((s) => s !== "NotPlanned").map(
+            (source: BisSource) => (
+              <li
+                key={source}
+                className="flex items-baseline justify-between gap-2 text-sm"
+              >
+                <span className="text-muted-foreground">
+                  {tSources(source)}
+                </span>
+                <span className="font-mono">{previewIlvs[source]}</span>
+              </li>
+            ),
+          )}
+        </ul>
+      </div>
+
+      <div>
+        <Button type="submit" disabled={pending}>
+          {t("save")}
+        </Button>
+      </div>
+    </form>
   );
 }

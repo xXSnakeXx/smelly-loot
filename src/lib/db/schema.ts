@@ -188,39 +188,6 @@ export const tier = sqliteTable(
     ilvCrafted: integer("ilv_crafted").notNull(),
     ilvWhyyyy: integer("ilv_whyyyy").notNull(),
     ilvJustNo: integer("ilv_just_no").notNull(),
-    /**
-     * Per-slot priority multiplier for the min-cost-flow planner.
-     * Lower value = cheaper edge cost = the optimiser prefers
-     * filling that slot first when multiple slots compete for the
-     * same drop / material. Default: chestpiece + pants get a
-     * 0.85 discount (highest stat budget in FFXIV gear), weapon
-     * gets a 0.80 discount, head gets 0.95, the rest stay at 1.0.
-     *
-     * Stored as JSON `Record<Slot, number>`. NULL on legacy rows;
-     * the action layer falls back to `DEFAULT_SLOT_WEIGHTS` from
-     * `src/lib/ffxiv/slots.ts` when reading.
-     */
-    slotWeights: text("slot_weights", { mode: "json" }).$type<
-      Record<string, number>
-    >(),
-    /**
-     * Per-role priority multiplier for the min-cost-flow planner.
-     * Lower value = cheaper drop edges to that role's NeedNodes,
-     * so the optimiser bias drops in their direction. Default
-     * gives the three DPS roles a 0.95 discount; tank and healer
-     * stay at 1.0. The user-facing tier-settings form lets the
-     * raid leader tune these.
-     *
-     * The "ab 2 verbleibenden Items" cap the user described falls
-     * out automatically: page-buy edges still exist for every
-     * unfulfilled need, so once a DPS has only 2 slots left and
-     * page-budget covers them, the optimiser routes drops to
-     * other roles whose Page balance can't cover their remaining
-     * needs.
-     */
-    roleWeights: text("role_weights", { mode: "json" }).$type<
-      Record<string, number>
-    >(),
     archivedAt: integer("archived_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()

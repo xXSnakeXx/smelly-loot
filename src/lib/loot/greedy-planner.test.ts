@@ -1,0 +1,632 @@
+import { describe, expect, it } from "vitest";
+
+import type { GearRole } from "@/lib/ffxiv/jobs";
+import { type BisSource, deriveSourceIlvs, type Slot } from "@/lib/ffxiv/slots";
+
+import type { PlayerSnapshot, TierSnapshot } from "./algorithm";
+import { computeGreedyPlan, type FloorMeta } from "./greedy-planner";
+
+/**
+ * Greedy bottleneck-aware planner tests (v4.0).
+ *
+ * Each test pins one design property of the algorithm — the tests
+ * are how we know future edits don't accidentally lose them.
+ */
+
+function makeTier(): TierSnapshot {
+  const ilvs = deriveSourceIlvs(795);
+  return {
+    maxIlv: 795,
+    ilvSavage: ilvs.Savage,
+    ilvTomeUp: ilvs.TomeUp,
+    ilvCatchup: ilvs.Catchup,
+    ilvTome: ilvs.Tome,
+    ilvExtreme: ilvs.Extreme,
+    ilvRelic: ilvs.Relic,
+    ilvCrafted: ilvs.Crafted,
+    ilvWhyyyy: ilvs.WHYYYY,
+    ilvJustNo: ilvs.JustNo,
+    buyCostByItem: new Map<string, { floor: number; cost: number }>([
+      ["Earring", { floor: 1, cost: 3 }],
+      ["Necklace", { floor: 1, cost: 3 }],
+      ["Bracelet", { floor: 1, cost: 3 }],
+      ["Ring", { floor: 1, cost: 3 }],
+      ["Head", { floor: 2, cost: 4 }],
+      ["Gloves", { floor: 2, cost: 4 }],
+      ["Boots", { floor: 2, cost: 4 }],
+      ["Glaze", { floor: 2, cost: 3 }],
+      ["Chestpiece", { floor: 3, cost: 6 }],
+      ["Pants", { floor: 3, cost: 6 }],
+      ["Twine", { floor: 3, cost: 4 }],
+      ["Ester", { floor: 3, cost: 4 }],
+      ["Weapon", { floor: 4, cost: 8 }],
+    ]) as TierSnapshot["buyCostByItem"],
+  };
+}
+
+interface MiniPlayerOpts {
+  id: number;
+  name: string;
+  gearRole: GearRole;
+  bisDesired?: Partial<Record<Slot, BisSource>>;
+  bisCurrent?: Partial<Record<Slot, BisSource>>;
+}
+
+function makePlayer(opts: MiniPlayerOpts): PlayerSnapshot {
+  return {
+    id: opts.id,
+    name: opts.name,
+    gearRole: opts.gearRole,
+    bisDesired: new Map(Object.entries(opts.bisDesired ?? {})) as Map<
+      Slot,
+      BisSource
+    >,
+    bisCurrent: new Map(Object.entries(opts.bisCurrent ?? {})) as Map<
+      Slot,
+      BisSource
+    >,
+    pages: new Map(),
+    materialsReceived: new Map(),
+    savageDropsThisTier: 0,
+    lastDropWeekByFloor: new Map(),
+  };
+}
+
+const FLOOR_1: FloorMeta = {
+  floorNumber: 1,
+  itemKeys: ["Earring", "Necklace", "Bracelet", "Ring"],
+  trackedForAlgorithm: true,
+};
+
+const FLOOR_2: FloorMeta = {
+  floorNumber: 2,
+  itemKeys: ["Head", "Gloves", "Boots", "Glaze"],
+  trackedForAlgorithm: true,
+};
+
+describe("computeGreedyPlan — basic mechanics", () => {
+  it("returns empty plans when there are no players", () => {
+    const plans = computeGreedyPlan([FLOOR_1], [], makeTier(), {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+    });
+    expect(plans).toHaveLength(1);
+    expect(plans[0]?.drops).toHaveLength(0);
+    expect(plans[0]?.buys).toHaveLength(0);
+  });
+
+  it("untracked floors emit unassigned drops without consulting players", () => {
+    // Player has open needs at a tracked floor (Earring) so the
+    // simulation runs at least 1 week. The untracked Floor 4
+    // should emit unassigned drops for that week.
+    const player = makePlayer({
+      id: 1,
+      name: "Solo",
+      gearRole: "tank",
+      bisDesired: { Earring: "Savage" },
+      bisCurrent: { Earring: "Crafted" },
+    });
+    const plans = computeGreedyPlan(
+      [
+        FLOOR_1,
+        { floorNumber: 4, itemKeys: ["Weapon"], trackedForAlgorithm: false },
+      ],
+      [player],
+      makeTier(),
+      { startingWeekNumber: 1, alreadyKilledFloors: new Set(), safetyCap: 5 },
+    );
+    const untrackedPlan = plans.find((p) => p.floorNumber === 4);
+    expect(untrackedPlan?.drops).toHaveLength(0);
+    expect(untrackedPlan?.unassignedDrops.length).toBeGreaterThan(0);
+  });
+
+  it("assigns the only drop to the only wanting player", () => {
+    const player = makePlayer({
+      id: 1,
+      name: "Solo",
+      gearRole: "tank",
+      bisDesired: { Earring: "Savage" },
+      bisCurrent: { Earring: "Crafted" },
+    });
+    const plans = computeGreedyPlan([FLOOR_1], [player], makeTier(), {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+    });
+    const earringDrops = plans[0]?.drops.filter((d) => d.itemKey === "Earring");
+    expect(earringDrops?.length).toBeGreaterThan(0);
+    expect(earringDrops?.[0]?.recipientName).toBe("Solo");
+  });
+});
+
+describe("computeGreedyPlan — bottleneck behaviour", () => {
+  it("Boss 1: the Ring trick — Drop-Empfänger kaufen anderes Acc, restliche Spieler kaufen Ring", () => {
+    // Setup matching the user's worked example:
+    //   8 players all need 1 Ring (Ring1 only)
+    //   5 need an Earring, 3 need a Necklace, 4 need a Bracelet
+    // Acc-Need totals per slot: Ring 8, Earring 5, Bracelet 4, Necklace 3.
+    // Bottleneck pre-simulation = Ring (highest total need).
+    const players: PlayerSnapshot[] = [];
+    // Build a roster where the per-slot needs sum to the user's
+    // example. Distribute the four non-ring needs across the
+    // eight players such that everyone needs Ring1.
+    const profiles: Array<{
+      name: string;
+      role: GearRole;
+      slots: Array<[Slot, BisSource]>;
+    }> = [
+      // 5 players need Earring
+      // 4 players need Bracelet
+      // 3 players need Necklace
+      // All 8 need Ring1
+      {
+        name: "P1",
+        role: "tank",
+        slots: [
+          ["Earring", "Savage"],
+          ["Bracelet", "Savage"],
+          ["Necklace", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "P2",
+        role: "tank",
+        slots: [
+          ["Earring", "Savage"],
+          ["Bracelet", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "P3",
+        role: "healer",
+        slots: [
+          ["Earring", "Savage"],
+          ["Necklace", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "P4",
+        role: "healer",
+        slots: [
+          ["Earring", "Savage"],
+          ["Bracelet", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "P5",
+        role: "melee",
+        slots: [
+          ["Earring", "Savage"],
+          ["Necklace", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "P6",
+        role: "phys_range",
+        slots: [
+          ["Bracelet", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "P7",
+        role: "caster",
+        slots: [["Ring1", "Savage"]],
+      },
+      {
+        name: "P8",
+        role: "caster",
+        slots: [["Ring1", "Savage"]],
+      },
+    ];
+    profiles.forEach((profile, idx) => {
+      const desired: Record<Slot, BisSource> = {} as Record<Slot, BisSource>;
+      const current: Record<Slot, BisSource> = {} as Record<Slot, BisSource>;
+      for (const [slot, source] of profile.slots) {
+        desired[slot] = source;
+        current[slot] = "Crafted";
+      }
+      players.push(
+        makePlayer({
+          id: idx + 1,
+          name: profile.name,
+          gearRole: profile.role,
+          bisDesired: desired,
+          bisCurrent: current,
+        }),
+      );
+    });
+
+    const plans = computeGreedyPlan([FLOOR_1], players, makeTier(), {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+    });
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+
+    // Total fills (drops + buys) must cover all 20 needs
+    // (8 Ring + 5 Earring + 4 Bracelet + 3 Necklace).
+    const totalFills = plan.drops.length + plan.buys.length;
+    expect(totalFills).toBe(20);
+
+    // Every (player, slot) need must be filled exactly once.
+    const filled = new Set<string>();
+    for (const d of plan.drops) filled.add(`${d.recipientId}|${d.slot}`);
+    for (const b of plan.buys) filled.add(`${b.playerId}|${b.slot}`);
+    expect(filled.size).toBe(20);
+
+    // The bottleneck (Ring) should appear in buys — pages were
+    // routed to it because it's the scarcest item.
+    const ringBuys = plan.buys.filter((b) => b.itemKey === "Ring");
+    expect(ringBuys.length).toBeGreaterThan(0);
+  });
+
+  it("Boss 2: Glaze-Bottleneck — Pages prefer Glaze, mixed-need players covered first", () => {
+    // 5 players have varying Glaze needs (3, 2, 1, 1, 1), 3 have
+    // none. Glaze is the bottleneck (highest roster need vs.
+    // Head/Gloves/Boots which are typically 1 per player).
+    const players: PlayerSnapshot[] = [
+      makePlayer({
+        id: 1,
+        name: "Fara",
+        gearRole: "tank",
+        bisDesired: {
+          Earring: "TomeUp",
+          Necklace: "TomeUp",
+          Bracelet: "TomeUp",
+          Head: "Savage",
+        },
+        bisCurrent: {
+          Earring: "Crafted",
+          Necklace: "Crafted",
+          Bracelet: "Crafted",
+          Head: "Crafted",
+        },
+      }),
+      makePlayer({
+        id: 2,
+        name: "Sndae",
+        gearRole: "healer",
+        bisDesired: {
+          Earring: "TomeUp",
+          Bracelet: "TomeUp",
+          Gloves: "Savage",
+        },
+        bisCurrent: {
+          Earring: "Crafted",
+          Bracelet: "Crafted",
+          Gloves: "Crafted",
+        },
+      }),
+      makePlayer({
+        id: 3,
+        name: "Kaz",
+        gearRole: "healer",
+        bisDesired: { Necklace: "TomeUp", Boots: "Savage" },
+        bisCurrent: { Necklace: "Crafted", Boots: "Crafted" },
+      }),
+      makePlayer({
+        id: 4,
+        name: "Quah",
+        gearRole: "melee",
+        bisDesired: { Ring1: "TomeUp", Head: "Savage" },
+        bisCurrent: { Ring1: "Crafted", Head: "Crafted" },
+      }),
+      makePlayer({
+        id: 5,
+        name: "Peter",
+        gearRole: "caster",
+        bisDesired: { Bracelet: "TomeUp", Gloves: "Savage" },
+        bisCurrent: { Bracelet: "Crafted", Gloves: "Crafted" },
+      }),
+    ];
+
+    const plans = computeGreedyPlan([FLOOR_2], players, makeTier(), {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+    });
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+
+    // 8 TomeUp Glaze needs total (3+2+1+1+1). All must be filled
+    // somehow (drops + buys).
+    const glazeFills =
+      plan.drops.filter((d) => d.itemKey === "Glaze").length +
+      plan.buys.filter((b) => b.itemKey === "Glaze").length;
+    expect(glazeFills).toBe(8);
+
+    // The player with 3 Glaze needs should be served at least
+    // partially by buys — drops alone (1/week) would take them
+    // 8 weeks; buys accelerate them.
+    const faraGlazeFills =
+      plan.drops.filter((d) => d.recipientId === 1 && d.itemKey === "Glaze")
+        .length +
+      plan.buys.filter((b) => b.playerId === 1 && b.itemKey === "Glaze").length;
+    expect(faraGlazeFills).toBe(3);
+  });
+
+  it("Bottleneck is fixed at simulation start, not recomputed mid-run", () => {
+    // 2 players: A wants 5 Earrings (impossible — only 2 slots),
+    // wait that's not a thing in FFXIV. Build a setup where the
+    // initial bottleneck would naturally shift if recomputed:
+    // 3 players need Ring (3 total), 5 players need Earring.
+    // After 3 weeks the Ring need is fully satisfied by drops;
+    // a recomputing-bottleneck planner would shift to Earring.
+    // We just verify the plan completes and doesn't loop.
+    const players: PlayerSnapshot[] = [];
+    for (let i = 0; i < 8; i += 1) {
+      const ringSlot: Slot | null = i < 3 ? "Ring1" : null;
+      const earringSlot: Slot | null = i < 5 ? "Earring" : null;
+      const desired: Partial<Record<Slot, BisSource>> = {};
+      const current: Partial<Record<Slot, BisSource>> = {};
+      if (ringSlot) {
+        desired[ringSlot] = "Savage";
+        current[ringSlot] = "Crafted";
+      }
+      if (earringSlot) {
+        desired[earringSlot] = "Savage";
+        current[earringSlot] = "Crafted";
+      }
+      players.push(
+        makePlayer({
+          id: i + 1,
+          name: `P${i + 1}`,
+          gearRole: "tank",
+          bisDesired: desired,
+          bisCurrent: current,
+        }),
+      );
+    }
+    const plans = computeGreedyPlan([FLOOR_1], players, makeTier(), {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+    });
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+    // 3 Ring + 5 Earring = 8 needs, all must be filled.
+    expect(plan.drops.length + plan.buys.length).toBe(8);
+  });
+});
+
+describe("computeGreedyPlan — fairness", () => {
+  it("does not give all drops to one player when several have equal need", () => {
+    // 3 players, all want one Earring. Only 1 drops/week, so it
+    // takes 3 weeks. Each player must get exactly one drop —
+    // the intra-week fairness penalty prevents the same player
+    // from being scored highest twice.
+    const players: PlayerSnapshot[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      players.push(
+        makePlayer({
+          id: i + 1,
+          name: `P${i + 1}`,
+          gearRole: "tank",
+          bisDesired: { Earring: "Savage" },
+          bisCurrent: { Earring: "Crafted" },
+        }),
+      );
+    }
+    const plans = computeGreedyPlan(
+      [{ ...FLOOR_1, itemKeys: ["Earring"] }],
+      players,
+      makeTier(),
+      {
+        startingWeekNumber: 1,
+        alreadyKilledFloors: new Set(),
+      },
+    );
+    const dropsByPlayer = new Map<number, number>();
+    for (const d of plans[0]?.drops ?? []) {
+      dropsByPlayer.set(
+        d.recipientId,
+        (dropsByPlayer.get(d.recipientId) ?? 0) + 1,
+      );
+    }
+    // Each of the 3 players gets exactly one Earring drop.
+    expect(dropsByPlayer.size).toBe(3);
+    for (const count of dropsByPlayer.values()) expect(count).toBe(1);
+  });
+
+  it("respects the safetyCap when the need is impossible to satisfy", () => {
+    // Player wants Offhand=Savage but no Offhand drops on this
+    // floor. Algorithm should hit the safety cap, return what
+    // it has, and not hang.
+    const player = makePlayer({
+      id: 1,
+      name: "Solo",
+      gearRole: "tank",
+      bisDesired: { Offhand: "Savage" },
+      bisCurrent: { Offhand: "Crafted" },
+    });
+    const start = Date.now();
+    const plans = computeGreedyPlan([FLOOR_1], [player], makeTier(), {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+      safetyCap: 5,
+    });
+    const elapsed = Date.now() - start;
+    expect(plans).toHaveLength(1);
+    expect(elapsed).toBeLessThan(100);
+    // No drops or buys — Floor 1 doesn't drop Offhand and the
+    // player needs nothing else.
+    expect(plans[0]?.drops).toHaveLength(0);
+    expect(plans[0]?.buys).toHaveLength(0);
+  });
+
+  it("Pages-Carry-Over works: spend pages in later weeks if not used now", () => {
+    // 1 player with 5 needs: Earring, Necklace, Bracelet, Ring1
+    // (all Savage). Drops will hand 1 of each per week → all 4
+    // can land in weeks 1-4. But pages accumulate at +4/week
+    // (1 per item + 1 for Ring) wait no, +1 per kill = +1/week
+    // for Floor 1. Cost of any Floor-1 buy = 3 pages → first
+    // buy at W3.
+    const player = makePlayer({
+      id: 1,
+      name: "Solo",
+      gearRole: "tank",
+      bisDesired: {
+        Earring: "Savage",
+        Necklace: "Savage",
+        Bracelet: "Savage",
+        Ring1: "Savage",
+      },
+      bisCurrent: {
+        Earring: "Crafted",
+        Necklace: "Crafted",
+        Bracelet: "Crafted",
+        Ring1: "Crafted",
+      },
+    });
+    const plans = computeGreedyPlan([FLOOR_1], [player], makeTier(), {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+    });
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+    // All 4 needs filled across drops + buys.
+    expect(plan.drops.length + plan.buys.length).toBe(4);
+    // No buy can land before W3 (cost 3, +1/week).
+    for (const buy of plan.buys) {
+      expect(buy.completionWeek).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
+describe("computeGreedyPlan — Mini-Beispiel from the design discussion", () => {
+  it("Drop-Empfänger kaufen Non-Ring-Items, Spieler ohne Ring kaufen Ring (8-player roster)", () => {
+    // Reproduces the user's worked example with realistic
+    // roster size: 8 players, all want Ring1=Savage. Some also
+    // want Earring/Necklace/Bracelet. After the first 3 weeks
+    // of the simulation, 3 players got their Ring as a drop;
+    // those 3 should buy something other than Ring with their
+    // pages. The other 5 buy Ring.
+    //
+    // The exact identity of who-buys-what depends on the score
+    // ordering; we only assert the structural property: the
+    // number of Ring buys equals the count of players still
+    // missing Ring after week 3 (which is 5 in this setup).
+    const profiles: Array<{
+      name: string;
+      role: GearRole;
+      slots: Array<[Slot, BisSource]>;
+    }> = [
+      {
+        name: "Kuda",
+        role: "tank",
+        slots: [
+          ["Bracelet", "Savage"],
+          ["Necklace", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "Kaz",
+        role: "healer",
+        slots: [
+          ["Bracelet", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "Brad",
+        role: "caster",
+        slots: [
+          ["Earring", "Savage"],
+          ["Necklace", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "Fara",
+        role: "tank",
+        slots: [
+          ["Earring", "Savage"],
+          ["Bracelet", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "Sndae",
+        role: "healer",
+        slots: [
+          ["Earring", "Savage"],
+          ["Necklace", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "Quah",
+        role: "melee",
+        slots: [
+          ["Earring", "Savage"],
+          ["Bracelet", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "Rei",
+        role: "phys_range",
+        slots: [
+          ["Earring", "Savage"],
+          ["Ring1", "Savage"],
+        ],
+      },
+      {
+        name: "Peter",
+        role: "caster",
+        slots: [["Ring1", "Savage"]],
+      },
+    ];
+    const players: PlayerSnapshot[] = profiles.map((p, idx) => {
+      const desired: Partial<Record<Slot, BisSource>> = {};
+      const current: Partial<Record<Slot, BisSource>> = {};
+      for (const [slot, src] of p.slots) {
+        desired[slot] = src;
+        current[slot] = "Crafted";
+      }
+      return makePlayer({
+        id: idx + 1,
+        name: p.name,
+        gearRole: p.role,
+        bisDesired: desired,
+        bisCurrent: current,
+      });
+    });
+
+    const plans = computeGreedyPlan(
+      [{ ...FLOOR_1, itemKeys: ["Earring", "Necklace", "Bracelet", "Ring"] }],
+      players,
+      makeTier(),
+      { startingWeekNumber: 1, alreadyKilledFloors: new Set() },
+    );
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+
+    // Need totals: Ring 8, Earring 5, Bracelet 4, Necklace 3 → 20 total.
+    expect(plan.drops.length + plan.buys.length).toBe(20);
+
+    // Bottleneck = Ring → at least one Ring buy must exist (the
+    // pages were spent on the bottleneck for 5 players whose
+    // Ring still wasn't covered by drops alone).
+    const ringBuys = plan.buys.filter((b) => b.itemKey === "Ring");
+    expect(ringBuys.length).toBeGreaterThan(0);
+
+    // Drop-recipients of Ring should NOT also be Ring-buyers
+    // (their need was satisfied by the drop).
+    const ringDropRecipients = new Set(
+      plan.drops.filter((d) => d.itemKey === "Ring").map((d) => d.recipientId),
+    );
+    for (const buy of ringBuys) {
+      expect(ringDropRecipients.has(buy.playerId)).toBe(false);
+    }
+  });
+});

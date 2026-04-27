@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ItemKey } from "@/lib/ffxiv/slots";
-import type { FloorPlan } from "@/lib/loot/floor-planner";
+import type { FloorPlan } from "@/lib/loot/greedy-planner";
 
 import { BuyAssignButton } from "./buy-assign-button";
 import { RefreshButton } from "./refresh-button";

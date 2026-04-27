@@ -7,6 +7,76 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-04-26
+
+### BREAKING
+
+This release **resets every tier's loot history**. Saved roster
+membership and BiS plans (desired sources, marker comments) are
+preserved; everything else — `loot_drop`, `boss_kill`, `raid_week`,
+`page_adjust`, `tier_plan_cache` rows and the `bis_choice.current_source`
+column — is wiped on container start by migration 0015. The pre-v4
+data was planned by a different algorithm (min-cost-flow); equipping
+those drops retroactively under the new bottleneck-aware logic would
+produce a state that doesn't match what the new planner would have
+recommended. Cleaner to start fresh.
+
+### Changed
+
+- **Algorithm replaced: greedy bottleneck-aware planner replaces
+  min-cost-flow.** The new `greedy-planner.ts` walks the simulation
+  week by week with two design properties:
+  - **Bottleneck per boss is computed once at simulation start** (the
+    item with the highest roster-wide open need on that floor) and
+    held constant for the entire run. Page-buys are routed to the
+    bottleneck for players who still need it; players who already
+    have the bottleneck (e.g. they got a Ring drop in W1-W2) buy
+    the next-most-needed item instead. Drops are awarded by need-
+    score with intra-week and intra-tier fairness penalties.
+  - **No fixed weeks-ahead horizon.** The simulation runs until every
+    player has zero open BiS slots, with a 50-week safety cap as
+    fallback. Plan-tab UI displays exactly the weeks the algorithm
+    touched.
+
+  The new algorithm is deterministic, sub-millisecond, and produces
+  schedules that match what an experienced raid leader would do
+  manually — distribute scarce items first, spend pages on the
+  scarcest item, never let one player monopolise a single week's
+  drops.
+
+### Removed
+
+- **MCMF planner** (`mcmf.ts`, `floor-planner.ts` and their tests).
+- **Per-tier slot/role weights** from the v3.3 era — `tier.slot_weights`
+  and `tier.role_weights` columns dropped, `updateTierWeightsAction`
+  removed, `TierWeightsForm` component removed, related i18n strings
+  cleared.
+- **`DEFAULT_SLOT_WEIGHTS`, `DEFAULT_ROLE_WEIGHTS`, `ROLE_WEIGHTS`**
+  exports from `slots.ts` / `jobs.ts` — no consumer left.
+
+### Tests
+
+37/37 green. The new `greedy-planner.test.ts` covers:
+- Bottleneck constancy (doesn't shift mid-simulation).
+- Boss-1 Ring-trick: page-buys land on the bottleneck for players
+  whose drop didn't cover it; drop-recipients buy a non-bottleneck
+  item.
+- Boss-2 Glaze-prefer: pages route to the material when it's the
+  bottleneck.
+- Per-week fairness: equal-need players each get exactly one drop
+  over the simulation.
+- Safety-cap termination on impossible needs (no infinite loops).
+- Pages-Carry-Over: a player banks pages across weeks if no eligible
+  item is available right now.
+
+### Migrations
+
+- `0015_v4_reset.sql` — drops `tier.slot_weights` + `tier.role_weights`
+  columns and wipes `loot_drop`, `boss_kill`, `raid_week`,
+  `page_adjust`, `tier_plan_cache`, plus rolls every
+  `bis_choice.current_source` back to `Crafted` (or `NotPlanned`
+  for slots that were already absent).
+
 ## [3.3.1] - 2026-04-26
 
 ### Fixed

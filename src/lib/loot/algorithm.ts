@@ -9,17 +9,15 @@ import type {
 /**
  * Loot-distribution shared types and item→slot mapping.
  *
- * Up to v2.5 this file also held the per-drop scoring engine
- * (`scoreDrop`, `scoreGear`, `scoreMaterial`, the page-aware
- * purchase simulator). v3.0 replaces all of that with the
- * min-cost-flow planner in `floor-planner.ts`, which solves a
- * single optimisation problem per floor instead of running a
- * score-then-greedy pass per item per week. The flow approach
- * removed every artefact of sequential awarding (Bracelet
- * spillover, in-week recency double-penalty, item-order
- * sensitivity) so the old scoring code is no longer reachable.
+ * Up to v2.5 this file held the per-drop scoring engine. v3.0
+ * replaced that with the min-cost-flow planner in `floor-planner.ts`.
+ * v4.0 replaces *that* with the bottleneck-aware greedy planner
+ * in `greedy-planner.ts` — see its file header for the design
+ * rationale. Both replacements were drop-ins for the consumer
+ * (the Plan / Track tabs) thanks to the stable shape of the
+ * snapshot types declared below.
  *
- * What remains here is the type surface — `PlayerSnapshot`,
+ * What lives here are the type surface — `PlayerSnapshot`,
  * `TierSnapshot` — and the gear-item ↔ slot mapping every other
  * loot file imports. Pure data structures; no behaviour to test.
  */

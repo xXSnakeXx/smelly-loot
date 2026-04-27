@@ -13,7 +13,7 @@ import type {
 } from "@/lib/db/queries-loot";
 import type { listPlayersInTier } from "@/lib/db/queries-players";
 import type { ItemKey, Slot } from "@/lib/ffxiv/slots";
-import type { FloorPlan } from "@/lib/loot/floor-planner";
+import type { FloorPlan } from "@/lib/loot/greedy-planner";
 
 /**
  * Per-floor list with kill toggle + drop cards.
