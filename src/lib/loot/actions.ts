@@ -39,8 +39,7 @@ import {
 export type LootActionResult =
   | { ok: true }
   | { ok: false; reason: "validation"; errors: Record<string, string> }
-  | { ok: false; reason: "conflict"; message: string }
-  | { ok: false; reason: "not_bis"; message: string };
+  | { ok: false; reason: "conflict"; message: string };
 
 function fieldErrors(error: z.ZodError): Record<string, string> {
   const flat = z.flattenError(error);
@@ -208,23 +207,22 @@ export async function awardLootDropAction(
   }
 
   // Compute target_slot + previous_current_source for the
-  // auto-equip side of the award. v3.2.1: if no eligible slot is
-  // found (recipient doesn't want the source on any compatible
-  // slot, or already has it everywhere), REJECT the award —
-  // the algorithm's promise is "fastest path to BiS", so loot
-  // shouldn't be persisted on a non-BiS recipient. Override-style
-  // awards from the Track tab go through this same gate, so a
-  // manual mistake doesn't sneak in either.
+  // auto-equip side of the award. v3.2.2 design: the action
+  // ALWAYS records the drop (operator freedom — the loot was
+  // distributed in real life and we want a faithful history),
+  // but auto-equip only fires when the recipient actually needs
+  // the slot at the drop's source. Manual overrides to non-BiS
+  // recipients keep their bisCurrent untouched, which means the
+  // Plan optimiser keeps recommending the same slot for them
+  // (correct behaviour; they still need it).
+  //
+  // Plan-Tab side: the algorithm is what enforces "fastest path
+  // to BiS" by only generating NeedNodes for BiS-eligible
+  // (player, slot) pairs. The action layer's job is just to
+  // honour the operator's pick; gate-keeping there created a
+  // confusing UX where stale Plan caches could surface "rejected"
+  // toasts for legitimate-looking Award buttons.
   const equip = await resolveAutoEquip(data.recipientId, data.itemKey);
-  if (!equip) {
-    return {
-      ok: false,
-      reason: "not_bis",
-      message:
-        "Recipient does not need this drop for BiS. Awards only go to players whose desired source matches the drop on at least one open slot.",
-    };
-  }
-
   // The tier this raid_week belongs to, needed for the bis_choice
   // upsert (bis_choice is keyed on (player_id, tier_id, slot)).
   const tierIdRow = await db
@@ -234,7 +232,7 @@ export async function awardLootDropAction(
     .limit(1);
   const tierId = tierIdRow[0]?.tierId;
 
-  if (tierId !== undefined) {
+  if (equip && tierId !== undefined) {
     // Update bis_choice.current_source for the equipped slot.
     await db
       .update(bisChoice)
@@ -255,8 +253,8 @@ export async function awardLootDropAction(
     recipientId: data.recipientId,
     paidWithPages: data.paidWithPages,
     pickedByAlgorithm: data.pickedByAlgorithm,
-    targetSlot: equip.targetSlot,
-    previousCurrentSource: equip.previousCurrentSource,
+    targetSlot: equip?.targetSlot ?? null,
+    previousCurrentSource: equip?.previousCurrentSource ?? null,
     scoreSnapshot: snapshot,
     notes: data.notes ?? null,
   });

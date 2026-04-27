@@ -7,6 +7,45 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.2.2] - 2026-04-26
+
+### Reverted from v3.2.1
+
+- v3.2.1's award rejection on non-BiS recipients was the wrong
+  layer to enforce "fastest path to BiS". The Plan algorithm
+  already only generates NeedNodes for BiS-eligible (player,
+  slot) pairs — that's where the algorithmic guarantee belongs.
+  The Track tab is the operator-trust escape hatch where manual
+  overrides need to go through, even for non-BiS recipients
+  (PUG, alt jobs, off-spec gear), and gating that with a hard
+  rejection produced confusing "rejected" toasts on legitimate
+  Award buttons whenever the Plan cache was slightly stale.
+
+### Changed
+
+- `awardLootDropAction` no longer returns `not_bis`. The action
+  ALWAYS records the loot_drop (faithful raid history); auto-equip
+  only fires when the recipient has the slot at the drop's source
+  on their `bisDesired`. Manual overrides to non-BiS recipients
+  keep their `bisCurrent` untouched — the Plan optimiser keeps
+  recommending the same slot for them on the next refresh, which
+  is correct (they still have a need).
+- The Track-tab override picker is back to listing every roster
+  member regardless of BiS-need. Operator picks anyone they want;
+  the algorithm just won't promote a non-BiS slot in the
+  background. The "no eligible recipient" message stays single
+  (the dual `noBisNeeders` variant from v3.2.1 is removed).
+- `LootActionResult` discriminator drops the `not_bis` branch.
+
+### Algorithmic invariant (unchanged)
+
+The Plan tab — both the recommended-recipient column and the
+buy plan — only contains entries where `bisDesired === source`
+on the candidate slot. That guarantee is built into the
+min-cost-flow network construction (NeedNodes are only added
+for BiS-eligible needs) and was never the cause of the v3.2.1
+rejection symptom.
+
 ## [3.2.1] - 2026-04-26
 
 ### Fixed

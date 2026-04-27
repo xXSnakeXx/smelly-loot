@@ -127,7 +127,6 @@ export default async function TierDetailPage({
       drops={drops}
       players={players}
       floorPlans={floorPlans}
-      tierId={tier.id}
     />
   ) : (
     <Card>

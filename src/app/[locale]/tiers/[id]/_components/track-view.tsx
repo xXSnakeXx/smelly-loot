@@ -6,36 +6,31 @@ import {
 } from "@/app/[locale]/loot/_components/drop-card";
 import { KillToggle } from "@/app/[locale]/loot/_components/kill-toggle";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { listBisChoicesForTier } from "@/lib/db/queries-bis";
 import type {
   listBossKillsForWeek,
   listFloorsForTier,
   listLootDropsForWeek,
 } from "@/lib/db/queries-loot";
 import type { listPlayersInTier } from "@/lib/db/queries-players";
-import { type BisSource, type ItemKey, type Slot } from "@/lib/ffxiv/slots";
-import { slotsForItem, sourceForItem } from "@/lib/loot/algorithm";
+import { type ItemKey, type Slot } from "@/lib/ffxiv/slots";
 import type { FloorPlan } from "@/lib/loot/floor-planner";
 
 /**
  * Per-floor list with kill toggle + drop cards.
  *
  * Server-rendered so the algorithm runs once per request and the
- * recommendation arrives in the markup. The component is shared
- * between the legacy `/loot` route (kept around for direct linking)
- * and the new `/tiers/[id]` tier-detail page (Track tab).
+ * recommendation arrives in the markup.
  *
  * Since v3.0.0 Track does NOT re-score drops on its own — it
  * reads the recommended recipient straight out of the cached
  * Plan (`floorPlans`) so Plan and Track can never disagree.
  *
- * Since v3.2.1 the override list is FILTERED: only players whose
- * `bisDesired` for at least one of the item's candidate slots
- * matches the drop's source AND who don't already have that
- * source equipped on every candidate are listed. Manual overrides
- * therefore can't sneak loot to a non-BiS recipient — the
- * algorithm's promise is fastest path to BiS, not "promote any
- * slot on any player".
+ * v3.2.2 keeps the override picker fully open: the manual list
+ * shows every roster member regardless of BiS status, so the
+ * operator can hand-assign loot to anyone for any reason. The
+ * algorithm's "fastest path to BiS" promise is enforced upstream
+ * (the Plan only generates NeedNodes for BiS-eligible slots);
+ * the Track tab is the operator-trust escape hatch.
  *
  * `floor.trackedForAlgorithm = false` floors render their drops as
  * a flat "any of the players could take this" list — the algorithm
@@ -48,7 +43,6 @@ export async function TrackView({
   drops,
   players,
   floorPlans,
-  tierId,
 }: {
   currentWeek: { id: number; weekNumber: number };
   floors: Awaited<ReturnType<typeof listFloorsForTier>>;
@@ -56,41 +50,8 @@ export async function TrackView({
   drops: Awaited<ReturnType<typeof listLootDropsForWeek>>;
   players: Awaited<ReturnType<typeof listPlayersInTier>>;
   floorPlans: FloorPlan[];
-  tierId: number;
 }) {
   const tFloor = await getTranslations("loot.floor");
-
-  // Build a (playerId, slot) → { desired, current } lookup so we
-  // can answer "is this player BiS-eligible for this item?"
-  // without N round-trips per drop card.
-  const bisRows = await listBisChoicesForTier(tierId);
-  const desiredByPlayerSlot = new Map<string, BisSource>();
-  const currentByPlayerSlot = new Map<string, BisSource>();
-  for (const row of bisRows) {
-    desiredByPlayerSlot.set(
-      `${row.playerId}|${row.slot}`,
-      row.desiredSource as BisSource,
-    );
-    currentByPlayerSlot.set(
-      `${row.playerId}|${row.slot}`,
-      row.currentSource as BisSource,
-    );
-  }
-
-  /**
-   * Is this player eligible to receive `itemKey` for BiS purposes?
-   * Eligibility = at least one candidate slot has bisDesired ==
-   * sourceForItem(itemKey) AND bisCurrent != that source.
-   */
-  function isPlayerEligible(playerId: number, itemKey: ItemKey): boolean {
-    const source = sourceForItem(itemKey);
-    for (const slot of slotsForItem(itemKey)) {
-      const desired = desiredByPlayerSlot.get(`${playerId}|${slot}`);
-      const current = currentByPlayerSlot.get(`${playerId}|${slot}`);
-      if (desired === source && current !== source) return true;
-    }
-    return false;
-  }
 
   const playerNameById = new Map<number, string>(
     players.map((p) => [p.id, p.name]),
@@ -168,13 +129,11 @@ export async function TrackView({
                   // Build the rankings list the DropCard expects:
                   // - First entry (if any): the Plan's recommended
                   //   recipient with sentinel score=100.
-                  // - Then every OTHER eligible player with score=0
-                  //   for manual override.
-                  // Players who don't have BiS-need for this item
-                  // are excluded entirely (v3.2.1) — manual override
-                  // can't accidentally promote a non-BiS slot.
-                  // Untracked floors keep their flat "everyone"
-                  // list because there's no algorithmic gate there.
+                  // - Then every OTHER player with score=0 for the
+                  //   manual-override picker. The picker is fully
+                  //   open: the operator can hand-assign to any
+                  //   roster member, BiS-need or not. Auto-equip
+                  //   on the action side handles the BiS-fit gate.
                   const rankings: RecommendationEntry[] = [];
                   if (planned) {
                     rankings.push({
@@ -188,12 +147,6 @@ export async function TrackView({
                   }
                   for (const player of players) {
                     if (planned && player.id === planned.recipientId) continue;
-                    if (
-                      floor.trackedForAlgorithm &&
-                      !isPlayerEligible(player.id, itemKey as ItemKey)
-                    ) {
-                      continue;
-                    }
                     rankings.push({
                       playerId: player.id,
                       playerName: player.name,
