@@ -7,6 +7,71 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-04-26
+
+### Added
+
+- **Diagonal bottleneck distribution via decaying score.** The
+  bottleneck score in the Greedy planner now uses
+  `OPEN_COUNT_FOR_ITEM(p, item) * 100` instead of the static
+  `INITIAL_NEED_AT_FLOOR(p, floor) * 100`. The score decays as
+  the player gets served: a player with three open Glaze slots
+  scores 300 in W1, 200 after winning W1's Glaze, 100 in W3,
+  and 0 once their last open Glaze slot is filled. Combined
+  with iteration-order tie-breaking this produces the
+  "diagonal" distribution operators expect — a 3-Glaze
+  player and a 2-Glaze player alternate weeks instead of the
+  3-Glaze player monopolising three consecutive weeks.
+
+- **`bossKillIndex` per planned drop and unassigned slot.**
+  Each `PlannedDrop` and `UnassignedDrop` now carries a 1-based
+  per-floor "Nth scheduled kill" index. The simulator
+  increments this counter once per simulation iteration that
+  produces drops or unassigned slots on a given floor.
+
+- **Track tab maps operator's actual kills onto plan via
+  `bossKillIndex`.** Previously the Track tab looked up the
+  plan's recommendation by `${floorNumber}|${weekNumber}|${itemKey}`,
+  which broke whenever the operator's actual kill order
+  diverged from the plan (skip Boss 2 in W1 → first kill in
+  W2 → Track showed the plan's W2 recommendation instead of
+  the kill-1 recommendation). The new lookup uses
+  `${floorNumber}|${bossKillIndex}|${itemKey}`, so Track
+  consistently shows the recommendation for "this is the Nth
+  kill of Boss X" regardless of which raid week it landed in.
+
+  - New `countPriorBossKillsByFloorForTier(tierId, currentWeek)`
+    query in `queries-loot.ts` returns
+    `Map<floorId, count_of_prior_kills>`.
+  - The current week's boss-kill is the Nth kill where
+    N = `priorKillsForFloor + 1`.
+
+### Changed
+
+- `PlannerState.initialNeedByFloor` field removed — the v4.2
+  bottleneck score derives the player's per-item open-count
+  directly from `desired`/`current`, so no per-floor snapshot
+  is needed.
+- `pickDropWinner` now takes `bottleneck: ItemKey | null` as
+  its second argument (was `floor: FloorMeta`). The score split
+  derives from item identity, not floor identity.
+- `isFloorPlanShape` validator (`plan-cache.ts`) now requires
+  every drop to carry a `bossKillIndex: number`. Pre-v4.2
+  cached plans fail validation and are recomputed transparently
+  on the next page render — no migration step is needed.
+
+### Tests
+
+- 17 greedy-planner tests (44 total project-wide):
+  - **Diagonal bottleneck**: roster of A=3-need, B=2-need,
+    C=1-need on Glaze produces six W2 drops with no 3-in-a-row
+    of the same recipient. Each player gets their full need.
+  - **bossKillIndex tracking**: new tests verify that
+    (a) a single Boss-1 drop in W1 carries `bossKillIndex = 1`,
+    (b) two players competing for one Earring across two weeks
+    yield `bossKillIndex` values of 1 then 2, and
+    (c) Floor-1 and Floor-2 maintain independent kill counters.
+
 ## [4.1.0] - 2026-04-26
 
 ### Added

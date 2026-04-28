@@ -850,7 +850,9 @@ describe("computeGreedyPlan — v4.1 score regimes", () => {
       ),
     ];
     // A has counter=2 already; B has counter=0.
-    players[0]!.savageDropsThisTier = 2;
+    const playerA = players[0];
+    if (!playerA) throw new Error("test setup missing player A");
+    playerA.savageDropsThisTier = 2;
     const plans = computeGreedyPlan([FLOOR_1], players, tier, {
       startingWeekNumber: 1,
       alreadyKilledFloors: new Set(),
@@ -922,5 +924,178 @@ describe("computeGreedyPlan — v4.1 score regimes", () => {
       (d) => d.week === 1 && d.itemKey === "Earring",
     );
     expect(w1Earring?.recipientId).toBe(2);
+  });
+});
+
+describe("computeGreedyPlan — v4.2 diagonal bottleneck distribution", () => {
+  it("diagonal: A=3 B=2 C=1 Glaze need spreads with no 3-in-a-row", () => {
+    // The user-reported pain point: pre-v4.2, a player with a
+    // 3-Glaze need would win 3 weeks in a row because the
+    // bottleneck score was constant `INITIAL_NEED * 100`. v4.2
+    // switches to `OPEN_COUNT_FOR_ITEM * 100` which decays as
+    // the player gets served, breaking the streak.
+    //
+    // Build a tier where Glaze is NOT buyable, so the simulation
+    // is forced to satisfy all needs via drops (otherwise the
+    // page-buy fast-path would short-circuit the test).
+    const tier = makeTier();
+    tier.buyCostByItem = new Map(
+      tier.buyCostByItem,
+    ) as TierSnapshot["buyCostByItem"];
+    tier.buyCostByItem.delete("Glaze");
+    const a = makePlayer({
+      id: 1,
+      name: "A",
+      gearRole: "tank",
+      bisDesired: {
+        Earring: "TomeUp",
+        Necklace: "TomeUp",
+        Bracelet: "TomeUp",
+      },
+      bisCurrent: {
+        Earring: "Crafted",
+        Necklace: "Crafted",
+        Bracelet: "Crafted",
+      },
+    });
+    const b = makePlayer({
+      id: 2,
+      name: "B",
+      gearRole: "healer",
+      bisDesired: { Earring: "TomeUp", Necklace: "TomeUp" },
+      bisCurrent: { Earring: "Crafted", Necklace: "Crafted" },
+    });
+    const c = makePlayer({
+      id: 3,
+      name: "C",
+      gearRole: "caster",
+      bisDesired: { Earring: "TomeUp" },
+      bisCurrent: { Earring: "Crafted" },
+    });
+    const plans = computeGreedyPlan(
+      [
+        {
+          floorNumber: 2,
+          itemKeys: ["Glaze"],
+          trackedForAlgorithm: true,
+        },
+      ],
+      [a, b, c],
+      tier,
+      {
+        startingWeekNumber: 1,
+        alreadyKilledFloors: new Set(),
+      },
+    );
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+
+    // 6 Glaze drops (3+2+1) over 6 weeks.
+    expect(plan.drops.length).toBe(6);
+    const sequence = plan.drops
+      .sort((x, y) => x.week - y.week)
+      .map((d) => d.recipientName);
+
+    // No 3-in-a-row of the same recipient (the v4.2 design goal).
+    for (let i = 0; i < sequence.length - 2; i += 1) {
+      const triple = `${sequence[i]}-${sequence[i + 1]}-${sequence[i + 2]}`;
+      expect(triple).not.toBe(`A-A-A`);
+      expect(triple).not.toBe(`B-B-B`);
+      expect(triple).not.toBe(`C-C-C`);
+    }
+
+    // Each player gets their full need.
+    const counts = sequence.reduce(
+      (m, name) => {
+        m[name] = (m[name] ?? 0) + 1;
+        return m;
+      },
+      {} as Record<string, number>,
+    );
+    expect(counts.A).toBe(3);
+    expect(counts.B).toBe(2);
+    expect(counts.C).toBe(1);
+  });
+});
+
+describe("computeGreedyPlan — v4.2 bossKillIndex tracking", () => {
+  it("each drop carries a 1-based per-floor kill index", () => {
+    const tier = makeTier();
+    const player = makePlayer({
+      id: 1,
+      name: "Solo",
+      gearRole: "tank",
+      bisDesired: { Earring: "Savage" },
+      bisCurrent: { Earring: "Crafted" },
+    });
+    const plans = computeGreedyPlan(
+      [{ ...FLOOR_1, itemKeys: ["Earring"] }],
+      [player],
+      tier,
+      {
+        startingWeekNumber: 1,
+        alreadyKilledFloors: new Set(),
+        safetyCap: 5,
+      },
+    );
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+    // Single Earring drop in W1 — bossKillIndex should be 1.
+    expect(plan.drops.length).toBe(1);
+    expect(plan.drops[0]?.bossKillIndex).toBe(1);
+    expect(plan.drops[0]?.week).toBe(1);
+  });
+
+  it("bossKillIndex independently tracked per floor", () => {
+    const tier = makeTier();
+    // Two players each wanting one Earring (F1) Savage. F1 has
+    // exactly one item key so each kill produces one drop. With
+    // both players tied on bottleneck score 100 in W1, P1 (lower
+    // id) wins; P2 wins W2. So F1 drops carry kill indexes 1
+    // then 2. F2 has its own independent kill counter starting
+    // at 1.
+    const p1 = makePlayer({
+      id: 1,
+      name: "P1",
+      gearRole: "tank",
+      bisDesired: { Earring: "Savage", Head: "Savage" },
+      bisCurrent: { Earring: "Crafted", Head: "Crafted" },
+    });
+    const p2 = makePlayer({
+      id: 2,
+      name: "P2",
+      gearRole: "healer",
+      bisDesired: { Earring: "Savage" },
+      bisCurrent: { Earring: "Crafted" },
+    });
+    const plans = computeGreedyPlan(
+      [
+        { ...FLOOR_1, itemKeys: ["Earring"] },
+        { ...FLOOR_2, itemKeys: ["Head"] },
+      ],
+      [p1, p2],
+      tier,
+      {
+        startingWeekNumber: 1,
+        alreadyKilledFloors: new Set(),
+        safetyCap: 5,
+      },
+    );
+    const f1 = plans.find((p) => p.floorNumber === 1);
+    const f2 = plans.find((p) => p.floorNumber === 2);
+    expect(f1).toBeDefined();
+    expect(f2).toBeDefined();
+    if (!f1 || !f2) return;
+    // Floor 1 drops in W1 (kill 1) and W2 (kill 2).
+    const f1Drops = f1.drops.sort((a, b) => a.week - b.week);
+    expect(f1Drops.length).toBe(2);
+    expect(f1Drops[0]?.bossKillIndex).toBe(1);
+    expect(f1Drops[1]?.bossKillIndex).toBe(2);
+    // Floor 2 starts its own kill counter at 1 in W1.
+    const f2Drops = f2.drops.sort((a, b) => a.week - b.week);
+    expect(f2Drops.length).toBe(1);
+    expect(f2Drops[0]?.bossKillIndex).toBe(1);
   });
 });

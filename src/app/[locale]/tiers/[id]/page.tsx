@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "@/i18n/navigation";
 import { getCurrentTeam } from "@/lib/db/queries";
 import {
+  countPriorBossKillsByFloorForTier,
   listBossKillsForWeek,
   listFloorsForTier,
   listLootDropsForWeek,
@@ -81,13 +82,18 @@ export default async function TierDetailPage({
     findCurrentWeek(tier.id),
   ]);
 
-  // Track tab needs the active-week's kills + drops too.
-  const [kills, drops] = currentWeek
+  // Track tab needs the active-week's kills + drops too, plus
+  // a per-floor count of how many boss-kill rows exist in raid
+  // weeks BEFORE the current one. The latter is the input for
+  // the v4.2 Track-tab `bossKillIndex` lookup — see TrackView
+  // for how the lookup keys are constructed.
+  const [kills, drops, priorKillsByFloor] = currentWeek
     ? await Promise.all([
         listBossKillsForWeek(currentWeek.id),
         listLootDropsForWeek(currentWeek.id),
+        countPriorBossKillsByFloorForTier(tier.id, currentWeek.weekNumber),
       ])
-    : [[], []];
+    : [[], [], new Map<number, number>()];
 
   // Plan tab: read from the persistent cache. The cache is only
   // refreshed when the user clicks the Refresh button on the Plan
@@ -136,6 +142,7 @@ export default async function TierDetailPage({
       drops={drops}
       players={players}
       floorPlans={floorPlans}
+      priorKillsByFloor={priorKillsByFloor}
     />
   ) : (
     <Card>

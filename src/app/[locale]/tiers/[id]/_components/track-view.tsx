@@ -32,6 +32,14 @@ import type { FloorPlan } from "@/lib/loot/greedy-planner";
  * (the Plan only generates NeedNodes for BiS-eligible slots);
  * the Track tab is the operator-trust escape hatch.
  *
+ * Since v4.2.0 the lookup uses `bossKillIndex` instead of the
+ * absolute `weekNumber`. The Plan is a deterministic schedule of
+ * "Nth time you kill Boss X" recommendations; the operator's
+ * actual kill order may diverge (skip Boss 2 in W1, kill it for
+ * the first time in W2). Mapping Plan→Track via the kill index
+ * means Track always shows the recommendation for "this is the
+ * Nth Boss-X kill", regardless of which raid week it landed in.
+ *
  * `floor.trackedForAlgorithm = false` floors render their drops as
  * a flat "any of the players could take this" list — the algorithm
  * abstains for floor 4 (weapons) per Topic 3 in the roadmap.
@@ -43,6 +51,7 @@ export async function TrackView({
   drops,
   players,
   floorPlans,
+  priorKillsByFloor,
 }: {
   currentWeek: { id: number; weekNumber: number };
   floors: Awaited<ReturnType<typeof listFloorsForTier>>;
@@ -50,6 +59,13 @@ export async function TrackView({
   drops: Awaited<ReturnType<typeof listLootDropsForWeek>>;
   players: Awaited<ReturnType<typeof listPlayersInTier>>;
   floorPlans: FloorPlan[];
+  /**
+   * Per-floor count of `boss_kill` rows in raid weeks BEFORE the
+   * current one. Drives the `bossKillIndex` lookup: if Boss 2 has
+   * 1 prior kill (last week), then this week's Boss-2 kill is
+   * kill #2, and we look up the plan's `bossKillIndex === 2` row.
+   */
+  priorKillsByFloor: ReadonlyMap<number, number>;
 }) {
   const tFloor = await getTranslations("loot.floor");
 
@@ -63,18 +79,21 @@ export async function TrackView({
   }
 
   // Index plan recommendations for O(1) lookup per drop card.
-  // Key: `${floorNumber}|${weekNumber}|${itemKey}` → recipient.
+  // Key: `${floorNumber}|${bossKillIndex}|${itemKey}` → recipient.
   const planByKey = new Map<
     string,
     { recipientId: number; recipientName: string; slot: Slot }
   >();
   for (const plan of floorPlans) {
     for (const planned of plan.drops) {
-      planByKey.set(`${plan.floorNumber}|${planned.week}|${planned.itemKey}`, {
-        recipientId: planned.recipientId,
-        recipientName: planned.recipientName,
-        slot: planned.slot,
-      });
+      planByKey.set(
+        `${plan.floorNumber}|${planned.bossKillIndex}|${planned.itemKey}`,
+        {
+          recipientId: planned.recipientId,
+          recipientName: planned.recipientName,
+          slot: planned.slot,
+        },
+      );
     }
   }
 
@@ -83,6 +102,11 @@ export async function TrackView({
       {floors.map((floor) => {
         const isKilled = killByFloorId.has(floor.id);
         const itemKeys = floor.drops as string[];
+        // The current week's kill of this floor is the Nth kill,
+        // where N = (count of prior kills) + 1. Track's lookup
+        // pulls the plan's recommendation for that kill index;
+        // skipped weeks don't shift it.
+        const currentBossKillIndex = (priorKillsByFloor.get(floor.id) ?? 0) + 1;
 
         return (
           <Card key={floor.id}>
@@ -122,7 +146,7 @@ export async function TrackView({
                   );
                   const planned = floor.trackedForAlgorithm
                     ? planByKey.get(
-                        `${floor.number}|${currentWeek.weekNumber}|${itemKey}`,
+                        `${floor.number}|${currentBossKillIndex}|${itemKey}`,
                       )
                     : undefined;
 

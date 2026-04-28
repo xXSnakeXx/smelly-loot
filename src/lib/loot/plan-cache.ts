@@ -238,11 +238,19 @@ export async function clearFrozenBuys(tierId: number): Promise<void> {
 function isFloorPlanShape(value: unknown): value is FloorPlan {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
-  return (
-    typeof v.floorNumber === "number" &&
-    Array.isArray(v.itemKeys) &&
-    Array.isArray(v.drops) &&
-    Array.isArray(v.buys) &&
-    Array.isArray(v.weekNumbers)
-  );
+  if (typeof v.floorNumber !== "number") return false;
+  if (!Array.isArray(v.itemKeys)) return false;
+  if (!Array.isArray(v.drops)) return false;
+  if (!Array.isArray(v.buys)) return false;
+  if (!Array.isArray(v.weekNumbers)) return false;
+  // v4.2: every drop must carry a `bossKillIndex` — older
+  // caches predating this field fail validation and are
+  // recomputed transparently on the next page load.
+  for (const d of v.drops as unknown[]) {
+    if (typeof d !== "object" || d === null) return false;
+    if (typeof (d as Record<string, unknown>).bossKillIndex !== "number") {
+      return false;
+    }
+  }
+  return true;
 }
