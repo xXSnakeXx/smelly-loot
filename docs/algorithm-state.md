@@ -1,4 +1,4 @@
-# Algorithm State — Snapshot v4.2.0 (2026-04-26)
+# Algorithm State — Snapshot v4.3.0 (2026-04-28)
 
 Dieser Snapshot dokumentiert den aktuellen Stand des Greedy-Planners
 und die offenen Design-Entscheidungen. Wird bei jedem grösseren
@@ -9,7 +9,7 @@ das **canonical reference document** — alles Wichtige steht hier.
 ## TL;DR — wo wir stehen
 
 - **Algorithmus**: Bottleneck-aware Greedy in `src/lib/loot/greedy-planner.ts`
-  (v4.2.0). Ersetzt das v3.x MCMF komplett.
+  (v4.3.0). Ersetzt das v3.x MCMF komplett.
 - **Plan-Stickyness**: ja, seit v4.0.1.
 - **Tier-Counter** als primäre Fairness-Mechanik (v4.1.0).
 - **Frozen Buys** seit v4.1.0 — Plan-Cache friert die Buy-Liste
@@ -17,10 +17,15 @@ das **canonical reference document** — alles Wichtige steht hier.
 - **Diagonal Bottleneck-Distribution** seit v4.2.0: ein 3-Glaze-
   Spieler dominiert nicht mehr 3 Wochen am Stück, weil der
   Bottleneck-Score mit jedem gewonnenen Drop sinkt.
+- **Hybrid-Score mit Initial-Need-Tie-Break** seit v4.3.0:
+  Single-Slot-Items (Ring/Earring/Necklace/Bracelet) bevorzugen
+  jetzt den Spieler mit höchster Initial-Floor-Need bei sonst
+  gleichem openCount. Brad mit 4 Boss-1-Needs gewinnt Ring vor
+  Kaz mit 2 Boss-1-Needs.
 - **`bossKillIndex` pro Drop** seit v4.2.0 — Track mappt die
   tatsächliche Kill-Reihenfolge des Operators auf die
   Plan-Empfehlungen, nicht mehr auf absolute Wochen-Nummern.
-- **Tests**: 44/44 green.
+- **Tests**: 46/46 green.
 
 ## Was der Algorithmus tut
 
@@ -34,15 +39,19 @@ Reihenfolge:
    - Kandidaten = Spieler mit offener BiS-Slot für dieses Item.
    - **Score** (höher = besser), zwei Regimes:
      ```
-     bottleneck_score(p, item)     = open_count_for_item(p, item) * 100
-     nonbottleneck_score(p)        = -K_COUNTER * tier_drop_count(p)
+     bottleneck_score(p, item, floor)
+       = open_count_for_item(p, item) * 100 + initial_need_at_floor(p, floor)
+     nonbottleneck_score(p)
+       = -K_COUNTER * tier_drop_count(p)
      ```
-     - Bottleneck-Score nutzt seit v4.2 den **aktuellen** open-
-       Count des Spielers für das spezifische Item, nicht den
-       initialen Floor-Need. Ein Spieler mit 3 offenen
-       Glaze-Slots scored 300 in W1, dann 200 in W2 (nach
-       Glaze-Win), 100 in W3 — der Score zerfällt mit jedem
-       Drop, der ihn bedient. → Diagonal-Distribution.
+     - Bottleneck-Score (v4.3): primärer Term
+       `open_count_for_item * 100` zerfällt mit jedem Drop, der
+       einen Spieler bedient (Diagonal-Verhalten aus v4.2). Der
+       additive Term `initial_need_at_floor` (Initial-Floor-
+       Savage-Need bei Plan-Start, frozen) ist klein genug dass
+       Diff im openCount × 100 immer dominiert, sorgt aber für
+       saubere Tie-Breaks bei Single-Slot-Items: Brad mit 4
+       Boss-1-Need bekommt Ring vor Kaz mit 2 Boss-1-Need.
      - Counter (`tier_drop_count`) wird **nicht** im
        Bottleneck-Score berücksichtigt: ein Spieler mit hohem
        Need-Count bekommt seinen Bottleneck-Drop, auch wenn er
@@ -223,3 +232,4 @@ Counter → niedrigerer Score in Non-Bottleneck-Regime).
 | v4.0.1  | 2026-04-26 | Plan-Stickyness; BuyAssign Done-Badge                  |
 | v4.1.0  | 2026-04-26 | Bottleneck/Non-Bottleneck-Score split, Tier-Counter, Frozen Buys |
 | v4.2.0  | 2026-04-26 | Diagonal Bottleneck (decaying score), `bossKillIndex` lookup |
+| v4.3.0  | 2026-04-28 | Hybrid-Score: openCount × 100 + Initial-Need-at-floor (Tie-Break Single-Slot) |

@@ -9,7 +9,7 @@ import {
 } from "./algorithm";
 
 /**
- * Greedy bottleneck-aware loot planner (v4.2).
+ * Greedy bottleneck-aware loot planner (v4.3).
  *
  * Replaces the v3.x min-cost-flow planner with a deterministic
  * week-by-week simulator. Three structural design points:
@@ -23,19 +23,23 @@ import {
  *      one for the bottleneck item, one for the rest:
  *
  *        bottleneck_score(p)     = open_count_for_item(p) * 100
+ *                                 + initial_need_at_floor(p)
  *        nonbottleneck_score(p)  = -K_COUNTER * tier_drop_count(p)
  *
- *      The bottleneck score uses the player's *current* open
- *      count for the specific item, not the floor's initial-need.
- *      That means a player with 3 open Glaze slots scores 300 in
- *      W1, then 200 in W2 (after winning W1's Glaze), then 100
- *      in W3, etc. — the score decays as the player gets served.
+ *      The `open_count_for_item * 100` term decays as the player
+ *      gets served — a 3-Glaze player scores 300 in W1, 200 after
+ *      winning W1's Glaze, 100 in W3 — producing the diagonal
+ *      distribution operators expect (no 3-in-a-row monopolies).
  *
- *      Combined with iter-order tie-breaking, this produces the
- *      "diagonal" distribution operators expect: a 3-Glaze player
- *      and a 2-Glaze player get drops on alternating weeks
- *      instead of the 3-Glaze player monopolising three weeks
- *      in a row.
+ *      The additive `initial_need_at_floor` term acts as a tie-
+ *      breaker for single-slot items (Earring/Necklace/Bracelet
+ *      and the Ring slots in TT3 where Ring1+Ring2 are split
+ *      Savage/TomeUp). Without it, a 4-need-at-Boss-1 player and
+ *      a 2-need-at-Boss-1 player would tie at 100 on the Ring
+ *      drop because both have a single open Ring-Savage slot;
+ *      with it, the higher-need player wins (140 vs 120). The
+ *      term is small enough that openCount differences (× 100)
+ *      always dominate, preserving the diagonal property.
  *
  *      Non-bottleneck drops are pure-fairness-driven by the tier
  *      counter. Need-count is irrelevant; the player with the
@@ -197,9 +201,42 @@ interface PlayerState {
    * by the snapshot loader.
    */
   dropCount: number;
+  /**
+   * Initial Savage-need slot count per floor at plan-start.
+   * Computed once from `bisDesired` ∩ `bisCurrent` and never
+   * mutated. Acts as a tie-breaker in the v4.3 bottleneck score
+   * for single-slot items (Ring/Earring/Necklace/Bracelet)
+   * where every candidate has the same `openCountForItem`. The
+   * 4-need-at-Boss-1 player wins the Ring before the 2-need
+   * player even though both have a single open Ring slot.
+   */
+  initialNeedByFloor: Map<number, number>;
 }
 
-function initPlayerState(s: PlayerSnapshot): PlayerState {
+function initPlayerState(
+  s: PlayerSnapshot,
+  floors: ReadonlyArray<FloorMeta>,
+): PlayerState {
+  const initialNeedByFloor = new Map<number, number>();
+  for (const floor of floors) {
+    if (!floor.trackedForAlgorithm) {
+      initialNeedByFloor.set(floor.floorNumber, 0);
+      continue;
+    }
+    let count = 0;
+    for (const item of floor.itemKeys) {
+      const itemSource = sourceForItem(item);
+      for (const slot of slotsForItem(item)) {
+        const desired = s.bisDesired.get(slot);
+        if (!desired || desired === "NotPlanned") continue;
+        if (desired !== itemSource) continue;
+        const current = s.bisCurrent.get(slot);
+        if (current === desired) continue;
+        count += 1;
+      }
+    }
+    initialNeedByFloor.set(floor.floorNumber, count);
+  }
   return {
     id: s.id,
     name: s.name,
@@ -208,6 +245,7 @@ function initPlayerState(s: PlayerSnapshot): PlayerState {
     current: new Map(s.bisCurrent),
     pages: new Map(s.pages),
     dropCount: s.savageDropsThisTier,
+    initialNeedByFloor,
   };
 }
 
@@ -309,9 +347,14 @@ function computeBottleneckForFloor(
  * Drop-recipient score. Two regimes:
  *
  *   - **Bottleneck item**: open count for THIS specific item,
- *     times 100. A 3-Glaze player scores 300 in W1, then 200
- *     after winning W1's Glaze, etc. — the score decays as the
- *     player's need shrinks. Counter is ignored.
+ *     times 100, plus the player's initial Savage-need-at-floor
+ *     as a tie-breaker. The product `openCount * 100` drives the
+ *     diagonal distribution (a 3-Glaze player decays from 300 to
+ *     200 to 100 as they get served), and the additive
+ *     `initialNeedAtFloor` term breaks the tie for single-slot
+ *     items where every candidate has the same `openCount`. A
+ *     4-need-at-Boss-1 player wins the Ring drop over a 2-need
+ *     player even though both have one open Ring slot.
  *
  *   - **Non-bottleneck item**: pure tier-counter penalty.
  *     `score = -K_COUNTER * drop_count(p)`. Need-count is
@@ -321,9 +364,12 @@ function dropScore(
   state: PlayerState,
   item: ItemKey,
   isBottleneck: boolean,
+  floor: FloorMeta,
 ): number {
   if (isBottleneck) {
-    return openCountForItem(state, item) * 100;
+    const open = openCountForItem(state, item);
+    const initial = state.initialNeedByFloor.get(floor.floorNumber) ?? 0;
+    return open * 100 + initial;
   }
   return -K_COUNTER * state.dropCount;
 }
@@ -335,6 +381,7 @@ function dropScore(
 function pickDropWinner(
   item: ItemKey,
   bottleneck: ItemKey | null,
+  floor: FloorMeta,
   states: ReadonlyArray<PlayerState>,
 ): PlayerState | null {
   const isBottleneck = bottleneck === item;
@@ -342,7 +389,7 @@ function pickDropWinner(
   let bestScore = Number.NEGATIVE_INFINITY;
   for (const state of states) {
     if (!hasOpenSlotForItem(state, item)) continue;
-    const score = dropScore(state, item, isBottleneck);
+    const score = dropScore(state, item, isBottleneck, floor);
     if (score > bestScore) {
       best = state;
       bestScore = score;
@@ -387,7 +434,7 @@ export function computeGreedyPlan(
   tier: TierSnapshot,
   options: GreedyPlanOptions,
 ): FloorPlan[] {
-  const states = snapshots.map((s) => initPlayerState(s));
+  const states = snapshots.map((s) => initPlayerState(s, floors));
   const safetyCap = options.safetyCap ?? SAFETY_CAP_DEFAULT;
 
   // Bottleneck per tracked floor — computed once on the initial
@@ -445,7 +492,7 @@ export function computeGreedyPlan(
           .map(({ item }) => item);
 
         for (const item of itemsInOrder) {
-          const winner = pickDropWinner(item, bottleneck, states);
+          const winner = pickDropWinner(item, bottleneck, floor, states);
           if (!winner) {
             allUnassigned.push({
               floorNumber: floor.floorNumber,

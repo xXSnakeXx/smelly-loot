@@ -7,6 +7,61 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-04-28
+
+### Added
+
+- **Hybrid bottleneck score combining diagonal decay with
+  initial-need tie-break.** The Greedy planner's bottleneck
+  score is now:
+
+  ```
+  bottleneck_score(p) = open_count_for_item(p) * 100
+                       + initial_need_at_floor(p)
+  ```
+
+  The `open_count_for_item * 100` term still drives the v4.2
+  diagonal distribution (a 3-Glaze player decays from 300 to
+  200 to 100 as they get served). The additive
+  `initial_need_at_floor` term is small enough that openCount
+  differences (× 100) always dominate, but breaks the tie for
+  single-slot items (Earring/Necklace/Bracelet, and the Ring
+  slots in TT3 where Ring1+Ring2 are split Savage/TomeUp).
+
+  **Why this matters**: in v4.2, when every Ring candidate has
+  one open Ring-Savage slot (because nobody on the roster wants
+  two Savage rings), all candidates tied at score 100 and
+  iter-order picked the lowest-id player regardless of their
+  total Boss-1 need. A 4-need player like Brad would lose the
+  Ring drop to a 2-need player like Kaz simply because Kaz had
+  a lower id. v4.3 restores the initial-need priority that v4.1
+  had: Brad's Boss-1 initial need of 4 scores 100 + 4 = 104,
+  Kaz's 2 scores 100 + 2 = 102, Brad wins.
+
+- New `PlayerState.initialNeedByFloor: Map<number, number>` —
+  computed once at plan-start from `bisDesired ∩ bisCurrent`,
+  immutable thereafter.
+
+- `initPlayerState(snapshot, floors)` now takes the floor list
+  to populate the initial-need map.
+
+### Changed
+
+- `dropScore(state, item, isBottleneck, floor)` and
+  `pickDropWinner(item, bottleneck, floor, states)` both gain
+  a `floor` parameter so the bottleneck-score regime can look
+  up the player's initial-need-at-floor.
+
+### Tests
+
+- 19 greedy-planner tests (46 total project-wide):
+  - **Hybrid score Ring tie-break** (TT3-style): three players
+    tied at openCount 1 on Ring; the 4-Boss-1-need player wins
+    the Ring drop over the 2-need iter-order favourite.
+  - **Diagonal property regression test**: confirms the v4.2
+    A=3/B=2/C=1 Glaze diagonal still produces no 3-in-a-row
+    despite the additive initial-need term.
+
 ## [4.2.0] - 2026-04-26
 
 ### Added

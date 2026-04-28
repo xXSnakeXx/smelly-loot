@@ -1099,3 +1099,152 @@ describe("computeGreedyPlan — v4.2 bossKillIndex tracking", () => {
     expect(f2Drops[0]?.bossKillIndex).toBe(1);
   });
 });
+
+describe("computeGreedyPlan — v4.3 hybrid bottleneck score", () => {
+  it("higher initial-need-at-floor wins when openCount is tied (TT3 Ring scenario)", () => {
+    // TT3-style scenario: Ring1+Ring2 split is 1 Savage + 1
+    // TomeUp per player, so every player has at most ONE open
+    // Ring-Savage slot. The v4.2 score `openCount * 100` tied
+    // every Ring candidate at 100 and fell back to iter-order,
+    // making the lower-id (lower-need) player win the Ring drop.
+    //
+    // The v4.3 score `openCount * 100 + initialNeedAtFloor`
+    // breaks the tie: a player with 4 Boss-1 Savage needs scores
+    // 100 + 4 = 104, a player with 2 needs scores 100 + 2 = 102.
+    // The 4-need player wins.
+    //
+    // Setup: 3 players where Ring is the bottleneck (3 ring
+    // needs total). Iteration order favours the lower-id Kaz
+    // first; v4.3 tie-break gives Brad the Ring W1 anyway.
+    const tier = makeTier();
+    const kaz = makePlayer({
+      id: 21,
+      name: "Kaz",
+      gearRole: "healer",
+      bisDesired: {
+        Bracelet: "Savage",
+        Ring2: "Savage",
+        Ring1: "TomeUp",
+        Earring: "TomeUp",
+        Necklace: "TomeUp",
+      },
+      bisCurrent: {
+        Bracelet: "Crafted",
+        Ring2: "Crafted",
+        Ring1: "Crafted",
+        Earring: "Crafted",
+        Necklace: "Crafted",
+      },
+    });
+    const peter = makePlayer({
+      id: 25,
+      name: "Peter",
+      gearRole: "caster",
+      bisDesired: { Ring2: "Savage", Ring1: "TomeUp" },
+      bisCurrent: { Ring2: "Crafted", Ring1: "Crafted" },
+    });
+    const brad = makePlayer({
+      id: 26,
+      name: "Brad",
+      gearRole: "caster",
+      bisDesired: {
+        Earring: "Savage",
+        Necklace: "Savage",
+        Bracelet: "Savage",
+        Ring1: "Savage",
+        Ring2: "TomeUp",
+      },
+      bisCurrent: {
+        Earring: "Crafted",
+        Necklace: "Crafted",
+        Bracelet: "Crafted",
+        Ring1: "Crafted",
+        Ring2: "Crafted",
+      },
+    });
+    const plans = computeGreedyPlan([FLOOR_1], [kaz, peter, brad], tier, {
+      startingWeekNumber: 1,
+      alreadyKilledFloors: new Set(),
+      safetyCap: 1,
+    });
+    const f1 = plans[0];
+    expect(f1).toBeDefined();
+    if (!f1) return;
+    // Roster Ring need = 3 (Brad R1 + Peter R2 + Kaz R2),
+    // making Ring the F1 bottleneck. The Ring W1 drop should
+    // go to Brad (initialNeed=4), not the iter-order favourite
+    // Kaz (initialNeed=2).
+    const w1Ring = f1.drops.find((d) => d.week === 1 && d.itemKey === "Ring");
+    expect(w1Ring).toBeDefined();
+    expect(w1Ring?.recipientName).toBe("Brad");
+  });
+
+  it("diagonal property still holds for multi-slot bottleneck items", () => {
+    // Sanity check: the v4.2 diagonal test (3-Glaze A vs 2-Glaze
+    // B vs 1-Glaze C) must still produce no 3-in-a-row even
+    // with the v4.3 additive initial-need term, because openCount
+    // differences (× 100) always dominate the additive term.
+    const tier = makeTier();
+    tier.buyCostByItem = new Map(
+      tier.buyCostByItem,
+    ) as TierSnapshot["buyCostByItem"];
+    tier.buyCostByItem.delete("Glaze");
+    const a = makePlayer({
+      id: 1,
+      name: "A",
+      gearRole: "tank",
+      bisDesired: {
+        Earring: "TomeUp",
+        Necklace: "TomeUp",
+        Bracelet: "TomeUp",
+      },
+      bisCurrent: {
+        Earring: "Crafted",
+        Necklace: "Crafted",
+        Bracelet: "Crafted",
+      },
+    });
+    const b = makePlayer({
+      id: 2,
+      name: "B",
+      gearRole: "healer",
+      bisDesired: { Earring: "TomeUp", Necklace: "TomeUp" },
+      bisCurrent: { Earring: "Crafted", Necklace: "Crafted" },
+    });
+    const c = makePlayer({
+      id: 3,
+      name: "C",
+      gearRole: "caster",
+      bisDesired: { Earring: "TomeUp" },
+      bisCurrent: { Earring: "Crafted" },
+    });
+    const plans = computeGreedyPlan(
+      [
+        {
+          floorNumber: 2,
+          itemKeys: ["Glaze"],
+          trackedForAlgorithm: true,
+        },
+      ],
+      [a, b, c],
+      tier,
+      {
+        startingWeekNumber: 1,
+        alreadyKilledFloors: new Set(),
+      },
+    );
+    const plan = plans[0];
+    expect(plan).toBeDefined();
+    if (!plan) return;
+    expect(plan.drops.length).toBe(6);
+    const sequence = plan.drops
+      .sort((x, y) => x.week - y.week)
+      .map((d) => d.recipientName);
+    for (let i = 0; i < sequence.length - 2; i += 1) {
+      const triple = `${sequence[i]}-${sequence[i + 1]}-${sequence[i + 2]}`;
+      expect(triple).not.toBe("A-A-A");
+      expect(triple).not.toBe("B-B-B");
+      expect(triple).not.toBe("C-C-C");
+    }
+  });
+});
