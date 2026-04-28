@@ -5,6 +5,8 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "team": "Team",
+    "teamSettings": "Team-Einstellungen",
     "players": "Spieler",
     "tier": "Tier",
     "loot": "Loot",
